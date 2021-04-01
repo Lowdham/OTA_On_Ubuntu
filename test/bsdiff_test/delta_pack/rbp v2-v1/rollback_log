@@ -1,0 +1,6 @@
+[delta][file][dir_already_exists/file_test.txt]
+[add][file][dir_already_exists/file_test_in_v1.txt]
+[add][dir][dir_only_exists_in_v1]
+[delete][dir][dir_only_in_ver2]
+[delta][file][file_already_exists.txt]
+[add][file][file_only_in_v1.txt]
