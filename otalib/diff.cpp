@@ -22,7 +22,7 @@ void copyDir(const QString& source, const QString& dest) {
   return;
 #endif
 
-#ifdef _LINUX
+#ifdef __linux__
   QString cmd("cp -r " + source + "/* " + dest);
   system(cmd.toStdString().c_str());
   return;
