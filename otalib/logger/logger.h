@@ -37,7 +37,7 @@ class Logger {
     template <class T>
     void log(const T &val) {
         appendTag();
-        inner_ss_ << val << std::endl;
+        inner_ss_ << val;
         bool __normal__ = true, __debug__ = false;
         std::string text = inner_ss_.str();
 #ifdef __LOGGER_COLOR
@@ -55,7 +55,7 @@ class Logger {
             text =
                 LOGGER_COLOR(fgColor::Yellow, bgColor::None).operator()(text);
 #endif
-        if (__normal__ || __debug__) std::cout << text;
+        if (__normal__ || __debug__) std::cout << text << std::endl;
 
         LOGGER_COLOR_RESET
     }
