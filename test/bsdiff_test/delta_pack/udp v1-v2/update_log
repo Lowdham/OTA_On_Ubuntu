@@ -1,0 +1,6 @@
+DELTA|FILE|dir_already_exists/file_test.txt|56
+DELETE|FILE|dir_already_exists/file_test_in_v1.txt
+DELETE|DIR|dir_only_exists_in_v1
+ADD|DIR|dir_only_in_ver2
+DELTA|FILE|file_already_exists.txt|56
+DELETE|FILE|file_only_in_v1.txt
