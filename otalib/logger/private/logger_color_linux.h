@@ -3,6 +3,7 @@
 
 #include <string>
 
+namespace otalib {
 namespace color {
 enum class ForegroundColor {
     None = 0,
@@ -83,5 +84,5 @@ class logger_color {
    private:
     std::string prefix_;
 };
-
+}
 #endif

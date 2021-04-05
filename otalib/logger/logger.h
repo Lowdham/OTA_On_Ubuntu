@@ -11,6 +11,7 @@
 #define __DEBUG 1
 #define __LOGGER_DATETIME 1
 
+namespace otalib {
 namespace logger {
 
 enum class Level {
@@ -56,7 +57,7 @@ class Logger {
                 LOGGER_COLOR(fgColor::Yellow, bgColor::None).operator()(text);
 #endif
         if (__normal__ || __debug__) std::cout << text << std::endl;
-
+        // restore the attribute of console on Windows
         LOGGER_COLOR_RESET
     }
 
@@ -108,12 +109,12 @@ class Logger {
     Level level_;
 };
 }  // namespace logger
+}
 
-#define LOG_LEVEL(LEVEL, ...) \
-    logger::Logger::getStream((LEVEL)).log(__VA_ARGS__);
-#define LOG_INFO(...) LOG_LEVEL(logger::Level::K_INFO, __VA_ARGS__)
-#define LOG_ERROR(...) LOG_LEVEL(logger::Level::K_ERROR, __VA_ARGS__)
-#define LOG_WARN(...) LOG_LEVEL(logger::Level::K_WARN, __VA_ARGS__)
-#define LOG_DEBUG(...) LOG_LEVEL(logger::Level::K_DEBUG, __VA_ARGS__)
+#define LOG_LEVEL(LEVEL, ...) otalib::logger::Logger::getStream((LEVEL)).log(__VA_ARGS__);
+#define LOG_INFO(...) LOG_LEVEL(otalib::logger::Level::K_INFO, __VA_ARGS__)
+#define LOG_ERROR(...) LOG_LEVEL(otalib::logger::Level::K_ERROR, __VA_ARGS__)
+#define LOG_WARN(...) LOG_LEVEL(otalib::logger::Level::K_WARN, __VA_ARGS__)
+#define LOG_DEBUG(...) LOG_LEVEL(otalib::logger::Level::K_DEBUG, __VA_ARGS__)
 
 #endif

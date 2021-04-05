@@ -5,6 +5,8 @@
 
 #include <iostream>
 #include <string>
+
+namespace otalib {
 namespace color {
 enum class FgColor {
     None = 0,
@@ -79,5 +81,6 @@ class logger_color {
     static WORD oldAttr_;
     WORD newAttr_;
 };
+}
 WORD logger_color::oldAttr_ = 0;
 #endif
