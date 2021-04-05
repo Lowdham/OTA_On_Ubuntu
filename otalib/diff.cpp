@@ -1,11 +1,11 @@
 #include "diff.h"
-namespace ota::diff {
+namespace otalib::bs {
 namespace {
 
 constexpr bool debug_mode = true;
 
 static int plainWrite(bsdiff_stream* stream, const void* buffer, int size) {
-  // Just write into the file
+  // Just write into the file.
   if (static_cast<QFile*>(stream->opaque)
           ->write(static_cast<const char*>(buffer), size) == size)
     return 0;
@@ -42,7 +42,7 @@ bool doAddActionLog(QFile* newfile, const QDir& tdir, const QDir& nroot,
   QString position = nroot.relativeFilePath(file.absoluteFilePath());
   // Try to remove the previous files.
   QFile::remove(udest_file);
-  dlog << "[delete][file][" + position + "]\n";
+  writeDeltaLog(dlog, {Action::DELETE, Category::FILE, position, QString()});
   if constexpr (debug_mode) {
     qDebug() << "[DoAddActionLog][File]";
     qDebug() << "[Source: " + file.absoluteFilePath() + "]";
@@ -50,7 +50,7 @@ bool doAddActionLog(QFile* newfile, const QDir& tdir, const QDir& nroot,
     qDebug() << "[Position: " + position + "]";
   }
   if (QFile::copy(file.filePath(), udest_file)) {
-    alog << "[add][file][" << position << "]\n";
+    writeDeltaLog(alog, {Action::ADD, Category::FILE, position, QString()});
     if constexpr (debug_mode) {
       qDebug() << "[Success]";
     }
@@ -70,9 +70,8 @@ bool doAddActionLog(QFileInfo* newdir, const QDir& tdir, const QDir& nroot,
   QDir dir(newdir->filePath());
   copyDir(dir, tdir);
   QString position = nroot.relativeFilePath(dir.absolutePath());
-  alog << "[add][dir][" << position << "]\n";
-  dlog << "[delete][dir][" << position << "]\n";
-
+  writeDeltaLog(alog, {Action::ADD, Category::DIR, position, QString()});
+  writeDeltaLog(dlog, {Action::DELETE, Category::DIR, position, QString()});
   if constexpr (debug_mode) {
     qDebug() << "[DoAddActionLog][Directory]";
     qDebug() << "[Source: " + newdir->absolutePath() + "]";
@@ -106,17 +105,20 @@ bool doChangeActionLog(QByteArray& buffer_old, QByteArray& buffer_new,
                           buffer_old.size(),
                           reinterpret_cast<const uint8_t*>(buffer_new.data()),
                           buffer_new.size(), &stream) == 0;
-
     delta.close();
     if (success) {
-      ulog << "[delta][file][" << pos << "]\n";
+      writeDeltaLog(
+          ulog, {Action::DELTA, Category::FILE, pos,
+                 QString::fromStdString(::std::to_string(buffer_new.size()))});
+
       return true;
     } else {
-      ulog << "[error][file][" << pos << "][bsdiff-error]\n";
+      writeDeltaLog(ulog, {Action::ERROR, Category::FILE, pos, "bsdiff-error"});
       return false;
     }
   } else {
-    ulog << "[error][file][" << pos << "][open-error]\n";
+    writeDeltaLog(ulog,
+                  {Action::ERROR, Category::FILE, pos, "file-open-error"});
     return false;
   }
 }
@@ -262,7 +264,7 @@ bool generateDeltaDir(QFileInfo* olddir, QFileInfo* newdir, QDir& udest,
           oldfile.close();
           continue;
         } else {  // Open failed.
-                  // TODO error process.
+          // TODO error process.
           continue;
         }
       }
@@ -286,10 +288,18 @@ bool generateDeltaDir(QFileInfo* olddir, QFileInfo* newdir, QDir& udest,
 
 }  // namespace
 
-bool BsDiff::generate(QDir& dir_old, QDir& dir_new, QDir& dest_rpack,
-                      QDir& dest_upack) noexcept {
+bool generateDeltaPack(QDir& dir_old, QDir& dir_new, QDir& dest_rpack,
+                       QDir& dest_upack) noexcept {
+  if (!dir_old.exists() || !dir_new.exists()) return false;
+
+  if (!dest_rpack.exists() && !dest_rpack.mkpath(dest_rpack.absolutePath()))
+    return false;
+
+  if (!dest_upack.exists() && !dest_upack.mkpath(dest_upack.absolutePath()))
+    return false;
+
   //
-  QFile ulogf(dest_upack.absoluteFilePath("upgrade_log"));
+  QFile ulogf(dest_upack.absoluteFilePath("update_log"));
   QFile rlogf(dest_rpack.absoluteFilePath("rollback_log"));
   if (ulogf.open(QFile::WriteOnly | QFile::Truncate) &&
       rlogf.open(QFile::WriteOnly | QFile::Truncate)) {
@@ -302,7 +312,150 @@ bool BsDiff::generate(QDir& dir_old, QDir& dir_new, QDir& dest_rpack,
   } else {
     return false;
   }
+
+  ulogf.close();
+  rlogf.close();
   return true;
 }
 
-}  // namespace ota::diff
+namespace {
+
+static int plainRead(const bspatch_stream* stream, void* buffer, int length) {
+  // Read from the patch file.
+  if (static_cast<QFile*>(stream->opaque)
+          ->read(static_cast<char*>(buffer), length) == length)
+    return 0;
+  else
+    return -1;
+}
+
+bool doAdd(const DeltaInfo& info, const QDir& pack, const QDir& root) {
+  QString spath = pack.absoluteFilePath(info.position);
+  QString dpath = root.absoluteFilePath(info.position);
+  switch (info.category) {
+    case Category::DIR:
+      copyDir(spath, dpath);
+      if (QDir(spath).exists() && QDir(dpath).exists()) return true;
+      break;
+    case Category::FILE:
+      if (QFile::copy(spath, dpath)) return true;
+      break;
+    default:
+      // TODO Error process.
+      break;
+  }
+  return false;
+}
+
+bool doDelete(const DeltaInfo& info, const QDir& pack, const QDir& root) {
+  QString dpath = root.absoluteFilePath(info.position);
+  switch (info.category) {
+    case Category::DIR:
+      if (QDir target(dpath); target.exists() && target.removeRecursively())
+        return true;
+      break;
+    case Category::FILE:
+      if (QFile(dpath).exists() && QFile::remove(dpath)) return true;
+      break;
+    default:
+      // TODO Error process.
+      break;
+  }
+  return false;
+}
+
+bool doDelta(const DeltaInfo& info, const QDir& pack, const QDir& root) {
+  QString patch_path = pack.absoluteFilePath(info.position + ".r");
+  QString source_path = root.absoluteFilePath(info.position);
+  switch (info.category) {
+    case Category::DIR:
+      // TODO
+      break;
+    case Category::FILE: {
+      QFile patch(patch_path);
+      QFile target(source_path);
+      if (patch.open(QFile::ReadOnly) && target.open(QFile::ReadOnly)) {
+        QByteArray buffer_target = target.readAll();
+        QByteArray buffer_result(info.opaque.toUInt(), '\0');
+        bspatch_stream stream{&patch, &plainRead};
+        if (bspatch(reinterpret_cast<uint8_t*>(buffer_target.data()),
+                    buffer_target.size(),
+                    reinterpret_cast<uint8_t*>(buffer_result.data()),
+                    buffer_result.size(), &stream) == 0) {
+          // Patch succeed.
+          buffer_result.shrink_to_fit();
+          target.close();
+          patch.close();
+          if (!target.open(QFile::WriteOnly | QFile::Truncate)) return false;
+
+          target.write(buffer_result);
+          target.close();
+          return true;
+        } else {  // Patch failed
+          patch.close();
+          target.close();
+          return false;
+        }
+      } else {  // Open failed.
+                // TODO Error process
+      }
+      break;
+    }
+    default:
+      // TODO Error process.
+      break;
+  }
+
+  return true;
+}
+
+void doApply(const QDir& pack, const QDir& target, QTextStream& log) noexcept {
+  DeltaInfoStream stream = readDeltaLog(log);
+  while (!stream.isEmpty()) {
+    // Read from the back.
+    const auto& info = stream.back();
+    switch (info.action) {
+      case Action::ADD:
+        doAdd(info, pack, target);
+        break;
+      case Action::DELETE:
+        doDelete(info, pack, target);
+        break;
+      case Action::DELTA:
+        doDelta(info, pack, target);
+        break;
+      default:
+        // TODO error processing.
+        return;
+    }
+    stream.pop_back();
+  }
+}
+
+}  // namespace
+
+bool applyDeltaPack(QDir& pack, QDir& target) noexcept {
+  if (!pack.exists() || !target.exists()) return false;
+
+  // If pack is a update pack.
+  QFile ulogf(pack.absoluteFilePath("update_log"));
+  if (ulogf.open(QFile::ReadOnly)) {
+    QTextStream log(&ulogf);
+    doApply(pack, target, log);
+    ulogf.close();
+    return true;
+  }
+
+  // If pack is a rollback pack.
+  QFile rlogf(pack.absoluteFilePath("rollback_log"));
+  if (rlogf.open(QFile::ReadOnly)) {
+    QTextStream log(&rlogf);
+    doApply(pack, target, log);
+    rlogf.close();
+    return true;
+  }
+
+  return false;
+}
+
+}  // namespace otalib::bs
