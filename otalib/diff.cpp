@@ -2,7 +2,7 @@
 namespace otalib::bs {
 namespace {
 
-constexpr bool debug_mode = true;
+constexpr bool bs_debug_mode = true;
 
 static int plainWrite(bsdiff_stream* stream, const void* buffer, int size) {
   // Just write into the file.
@@ -42,24 +42,25 @@ bool doAddActionLog(QFile* newfile, const QDir& tdir, const QDir& nroot,
   QString position = nroot.relativeFilePath(file.absoluteFilePath());
   // Try to remove the previous files.
   QFile::remove(udest_file);
-  writeDeltaLog(dlog, {Action::DELETE, Category::FILE, position, QString()});
-  if constexpr (debug_mode) {
-    qDebug() << "[DoAddActionLog][File]";
-    qDebug() << "[Source: " + file.absoluteFilePath() + "]";
-    qDebug() << "[Dest: " + tdir.absolutePath() + "]";
-    qDebug() << "[Position: " + position + "]";
+  writeDeltaLog(dlog, {Action::DELETEACT, Category::FILE, position, QString()});
+  if constexpr (bs_debug_mode) {
+    print<GeneralDebugCtrl>(std::cout, "[DoAddActionLog][File]");
+    print<GeneralDebugCtrl>(std::cout,
+                            "[Source: " + file.absoluteFilePath() + "]");
+    print<GeneralDebugCtrl>(std::cout, "[Dest: " + tdir.absolutePath() + "]");
+    print<GeneralDebugCtrl>(std::cout, "[Position: " + position + "]");
   }
   if (QFile::copy(file.filePath(), udest_file)) {
     writeDeltaLog(alog, {Action::ADD, Category::FILE, position, QString()});
-    if constexpr (debug_mode) {
-      qDebug() << "[Success]";
-    }
+    if constexpr (bs_debug_mode)
+      print<GeneralDebugCtrl>(std::cout, "[Success]\n");
+
     return true;
   } else {  // Copy failed.
     // TODO process the error
-    if constexpr (debug_mode) {
-      qDebug() << "[Failed]";
-    }
+    if constexpr (bs_debug_mode)
+      print<GeneralFerrorCtrl>(std::cerr, "[Copy Failed]\n");
+
     return false;
   }
 }
@@ -71,12 +72,13 @@ bool doAddActionLog(QFileInfo* newdir, const QDir& tdir, const QDir& nroot,
   copyDir(dir, tdir);
   QString position = nroot.relativeFilePath(dir.absolutePath());
   writeDeltaLog(alog, {Action::ADD, Category::DIR, position, QString()});
-  writeDeltaLog(dlog, {Action::DELETE, Category::DIR, position, QString()});
-  if constexpr (debug_mode) {
-    qDebug() << "[DoAddActionLog][Directory]";
-    qDebug() << "[Source: " + newdir->absolutePath() + "]";
-    qDebug() << "[Dest: " + tdir.absolutePath() + "]";
-    qDebug() << "[Postion: " + position + "]";
+  writeDeltaLog(dlog, {Action::DELETEACT, Category::DIR, position, QString()});
+  if constexpr (bs_debug_mode) {
+    print<GeneralDebugCtrl>(std::cout, "[DoAddActionLog][Directory]");
+    print<GeneralDebugCtrl>(std::cout,
+                            "[Source: " + newdir->absolutePath() + "]");
+    print<GeneralDebugCtrl>(std::cout, "[Dest: " + tdir.absolutePath() + "]");
+    print<GeneralDebugCtrl>(std::cout, "[Postion: " + position + "]");
   }
   return true;
 }
@@ -113,12 +115,13 @@ bool doChangeActionLog(QByteArray& buffer_old, QByteArray& buffer_new,
 
       return true;
     } else {
-      writeDeltaLog(ulog, {Action::ERROR, Category::FILE, pos, "bsdiff-error"});
+      writeDeltaLog(ulog,
+                    {Action::ERRORACT, Category::FILE, pos, "bsdiff-error"});
       return false;
     }
   } else {
     writeDeltaLog(ulog,
-                  {Action::ERROR, Category::FILE, pos, "file-open-error"});
+                  {Action::ERRORACT, Category::FILE, pos, "file-open-error"});
     return false;
   }
 }
@@ -158,15 +161,17 @@ bool generateDeltaFile(QFile* oldfile, QFile* newfile, QDir& udest, QDir& rdest,
 bool generateDeltaDir(QFileInfo* olddir, QFileInfo* newdir, QDir& udest,
                       QDir& rdest, const QDir& oroot, const QDir& nroot,
                       QTextStream& ulog, QTextStream& rlog) {
-  if constexpr (debug_mode) {
+  if constexpr (bs_debug_mode) {
     QString odir_info = !olddir ? "null" : olddir->filePath();
     QString ndir_info = !newdir ? "null" : newdir->filePath();
 
-    qDebug() << "[GenerateDeltaDir]";
-    qDebug() << "[Old][" + odir_info + "]";
-    qDebug() << "[New][" + ndir_info + "]";
-    qDebug() << "[UpdatePackDest][" + udest.absolutePath() + "]";
-    qDebug() << "[RollbackPackDest][" + rdest.absolutePath() + "]";
+    print<GeneralDebugCtrl>(std::cout, "[GenerateDeltaDir]");
+    print<GeneralDebugCtrl>(std::cout, "[Old][" + odir_info + "]");
+    print<GeneralDebugCtrl>(std::cout, "[New][" + ndir_info + "]");
+    print<GeneralDebugCtrl>(std::cout,
+                            "[UpdatePackDest][" + udest.absolutePath() + "]");
+    print<GeneralDebugCtrl>(std::cout,
+                            "[RollbackPackDest][" + rdest.absolutePath() + "]");
   }
 
   // relativeFilePath
@@ -334,7 +339,7 @@ bool doAdd(const DeltaInfo& info, const QDir& pack, const QDir& root) {
   QString dpath = root.absoluteFilePath(info.position);
   switch (info.category) {
     case Category::DIR:
-      copyDir(spath, dpath);
+      copyDir(spath, dpath + "\\");
       if (QDir(spath).exists() && QDir(dpath).exists()) return true;
       break;
     case Category::FILE:
@@ -392,6 +397,7 @@ bool doDelta(const DeltaInfo& info, const QDir& pack, const QDir& root) {
           target.close();
           return true;
         } else {  // Patch failed
+          // TODO Error Process. ERROR MSG OUTPUT
           patch.close();
           target.close();
           return false;
@@ -410,6 +416,7 @@ bool doDelta(const DeltaInfo& info, const QDir& pack, const QDir& root) {
 }
 
 void doApply(const QDir& pack, const QDir& target, QTextStream& log) noexcept {
+  // Generate a done-list. TODO
   DeltaInfoStream stream = readDeltaLog(log);
   while (!stream.isEmpty()) {
     // Read from the back.
@@ -418,15 +425,16 @@ void doApply(const QDir& pack, const QDir& target, QTextStream& log) noexcept {
       case Action::ADD:
         doAdd(info, pack, target);
         break;
-      case Action::DELETE:
+      case Action::DELETEACT:
         doDelete(info, pack, target);
         break;
       case Action::DELTA:
         doDelta(info, pack, target);
         break;
-      default:
-        // TODO error processing.
-        return;
+      default: {
+        print<GeneralErrorCtrl>(std::cout,
+                                "[Invalid \"Action\" info in the log]");
+      }
     }
     stream.pop_back();
   }
@@ -435,11 +443,26 @@ void doApply(const QDir& pack, const QDir& target, QTextStream& log) noexcept {
 }  // namespace
 
 bool applyDeltaPack(QDir& pack, QDir& target) noexcept {
-  if (!pack.exists() || !target.exists()) return false;
+  if constexpr (bs_debug_mode)
+    print<GeneralDebugCtrl>(std::cout, "[applyDeltaPack]");
 
+  if (!pack.exists() || !target.exists()) {
+    if (!pack.exists())
+      print<GeneralErrorCtrl>(std::cerr, "[Invalid pack dir]");
+    else
+      print<GeneralErrorCtrl>(std::cerr, "[Invalid target dir]");
+    return false;
+  }
   // If pack is a update pack.
   QFile ulogf(pack.absoluteFilePath("update_log"));
   if (ulogf.open(QFile::ReadOnly)) {
+    if constexpr (bs_debug_mode) {
+      print<GeneralDebugCtrl>(std::cout, "[Update]");
+      print<GeneralDebugCtrl>(std::cout,
+                              "[ Pack  : " + pack.absolutePath() + "]");
+      print<GeneralDebugCtrl>(std::cout,
+                              "[Target : " + pack.absolutePath() + "]");
+    }
     QTextStream log(&ulogf);
     doApply(pack, target, log);
     ulogf.close();
@@ -449,6 +472,13 @@ bool applyDeltaPack(QDir& pack, QDir& target) noexcept {
   // If pack is a rollback pack.
   QFile rlogf(pack.absoluteFilePath("rollback_log"));
   if (rlogf.open(QFile::ReadOnly)) {
+    if constexpr (bs_debug_mode) {
+      print<GeneralDebugCtrl>(std::cout, "[Rollback]");
+      print<GeneralDebugCtrl>(std::cout,
+                              "[ Pack  : " + pack.absolutePath() + "]");
+      print<GeneralDebugCtrl>(std::cout,
+                              "[Target : " + pack.absolutePath() + "]");
+    }
     QTextStream log(&rlogf);
     doApply(pack, target, log);
     rlogf.close();
