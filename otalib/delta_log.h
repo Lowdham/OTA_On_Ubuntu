@@ -7,7 +7,7 @@
 
 namespace otalib {
 
-enum class Action { ADD, DELETE, DELTA, ERROR, UNEXPECTED_ERROR };
+enum class Action { ADD, DELETEACT, DELTA, ERRORACT, UNEXPECTED_ERROR };
 enum class Category { FILE, DIR, UNEXPECTED_ERROR };
 /* Info pattern
  *  Normal info: action|category|position|

@@ -3,9 +3,9 @@
 namespace otalib {
 namespace {
 
-#define INFO_LOAD_ERROR_CHECK                                              \
-  if (list.isEmpty())                                                      \
-    return DeltaInfo{Action::ERROR, Category::UNEXPECTED_ERROR, QString(), \
+#define INFO_LOAD_ERROR_CHECK                                                 \
+  if (list.isEmpty())                                                         \
+    return DeltaInfo{Action::ERRORACT, Category::UNEXPECTED_ERROR, QString(), \
                      "Info-Load-Error"};
 
 // Receive the action block and shift.
@@ -19,11 +19,11 @@ DeltaInfo receiveLine(const QString& line) noexcept {
   if (action == "ADD")
     info.action = Action::ADD;
   else if (action == "DELETE")
-    info.action = Action::DELETE;
+    info.action = Action::DELETEACT;
   else if (action == "DELTA")
     info.action = Action::DELTA;
   else if (action == "ERROR")
-    info.action = Action::ERROR;
+    info.action = Action::ERRORACT;
   else
     info.action = Action::UNEXPECTED_ERROR;
 
@@ -47,7 +47,7 @@ DeltaInfo receiveLine(const QString& line) noexcept {
   if (info.action == Action::DELTA && info.category == Category::FILE) {
     list.pop_front();
     if (!list.isEmpty()) info.opaque = list.front();
-  } else if (info.action == Action::ERROR) {
+  } else if (info.action == Action::ERRORACT) {
     list.pop_front();
     if (!list.isEmpty()) info.opaque = list.front();
   }
@@ -62,13 +62,13 @@ void writeDeltaLog(QTextStream& log, const DeltaInfo& info) noexcept {
     case Action::ADD:
       log << "ADD|";
       break;
-    case Action::DELETE:
+    case Action::DELETEACT:
       log << "DELETE|";
       break;
     case Action::DELTA:
       log << "DELTA|";
       break;
-    case Action::ERROR:
+    case Action::ERRORACT:
       log << "ERROR|";
       break;
     default:

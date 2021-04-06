@@ -14,6 +14,7 @@
 #include "bsdiff/bsdiff.h"
 #include "bsdiff/bspatch.h"
 #include "delta_log.h"
+#include "logger/logger.h"
 
 namespace otalib::bs {
 
