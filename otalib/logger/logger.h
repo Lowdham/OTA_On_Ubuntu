@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <QString>
 
 #include "logger_color.h"
 
@@ -109,6 +110,18 @@ class Logger {
     Level level_;
 };
 }  // namespace logger
+}
+
+inline std::ostream& operator<<(std::ostream& out, const QString& str)
+{
+    out << str.toStdString();
+    return out;
+}
+
+inline std::ostream& operator<<(std::ostream& out, QString&& str)
+{
+    out << str.toStdString();
+    return out;
 }
 
 #define LOG_LEVEL(LEVEL, ...) otalib::logger::Logger::getStream((LEVEL)).log(__VA_ARGS__);
