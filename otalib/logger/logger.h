@@ -114,7 +114,7 @@ class Logger {
 static constexpr char kHeadTagFatalError[] = "[FATAL ERROR]";
 static constexpr char kHeadTagDebug[] = "[DEBUG]";
 
-template <decltype(auto) HeadTag, decltype(auto) Sep, fgColor fcolor,
+template <auto HeadTag, auto Sep, fgColor fcolor,
           bool otime = true, bool linefeed = true, bool thread_safe = false>
 struct PrintCtrl {
   static constexpr decltype(auto) tag() noexcept { return HeadTag; }
