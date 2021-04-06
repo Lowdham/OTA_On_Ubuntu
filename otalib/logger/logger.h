@@ -8,7 +8,7 @@
 #include <sstream>
 
 #include "logger_color.h"
-#include "utils.hpp"
+#include "../utils.hpp"
 
 namespace otalib {
 
