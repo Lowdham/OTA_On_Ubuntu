@@ -7,8 +7,8 @@
 #include <iostream>
 #include <sstream>
 
-#include "logger_color.h"
 #include "../utils.hpp"
+#include "logger_color.h"
 
 namespace otalib {
 
@@ -18,8 +18,8 @@ static constexpr char kHeadTagDebug[] = "[DEBUG]";
 static constexpr char kHeadTagWarn[] = "[WARNNING]";
 static constexpr char kHeadTagInfo[] = "[INFO]";
 
-template <auto HeadTag, auto Sep, fgColor fcolor,
-          bool otime = false, bool linefeed = true, bool thread_safe = false>
+template <auto HeadTag, auto Sep, fgColor fcolor, bool otime = false,
+          bool linefeed = true, bool thread_safe = false>
 struct PrintCtrl {
   static constexpr decltype(auto) tag() noexcept { return HeadTag; }
   static constexpr decltype(auto) sep() noexcept { return Sep; }
