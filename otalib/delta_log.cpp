@@ -43,7 +43,7 @@ DeltaInfo receiveLine(const QString& line) noexcept {
   INFO_LOAD_ERROR_CHECK
   info.position = list.front();
 
-  info.opaque = QString();
+  info.opaque = QString("Null");
   if (info.action == Action::DELTA && info.category == Category::FILE) {
     list.pop_front();
     if (!list.isEmpty()) info.opaque = list.front();

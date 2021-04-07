@@ -17,6 +17,7 @@ static constexpr char kHeadTagError[] = "[FATAL ERROR]";
 static constexpr char kHeadTagDebug[] = "[DEBUG]";
 static constexpr char kHeadTagWarn[] = "[WARNNING]";
 static constexpr char kHeadTagInfo[] = "[INFO]";
+static constexpr char kHeadTagSuccess[] = "[SUCCESS]";
 
 template <auto HeadTag, auto Sep, fgColor fcolor, bool otime = false,
           bool linefeed = true, bool thread_safe = false>
@@ -34,6 +35,7 @@ using GeneralErrorCtrl = PrintCtrl<kHeadTagError, ' ', fgColor::Red>;
 using GeneralDebugCtrl = PrintCtrl<kHeadTagDebug, ' ', fgColor::Yellow>;
 using GeneralWarnCtrl = PrintCtrl<kHeadTagWarn, ' ', fgColor::Yellow>;
 using GeneralInfoCtrl = PrintCtrl<kHeadTagInfo, ' ', fgColor::None>;
+using GeneralSuccessCtrl = PrintCtrl<kHeadTagSuccess, ' ', fgColor::Green>;
 
 template <typename ctrl, typename OutputStream, typename... Args>
 void print(OutputStream&& out, Args&&... args) {
@@ -64,13 +66,17 @@ void print(OutputStream&& out, Args&&... args) {
   std::string msg =
       LOGGER_COLOR(ctrl::color(), bgColor::None).operator()(inner_stream.str());
 
+  // Clear the str.
+  inner_stream.str("");
+
   // May need support for customized endl;
   {
     if constexpr (ctrl::isThreadSafe()) SpinLock::Acquire locker(slock);
-    out << msg << std::endl;
-    if constexpr (ctrl::isLinefeed()) {
+    out << msg;
+    if constexpr (ctrl::isLinefeed())
       out << '\n';
-    }
+    else
+      out << std::flush;
   }
   LOGGER_COLOR_RESET
 }

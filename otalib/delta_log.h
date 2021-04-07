@@ -20,6 +20,11 @@ struct DeltaInfo {
   QString opaque;
 };
 
+inline bool operator==(const DeltaInfo& lhs, const DeltaInfo& rhs) noexcept {
+  return (lhs.action == rhs.action && lhs.category == rhs.category &&
+          lhs.position == rhs.position && lhs.opaque == rhs.opaque);
+}
+
 using DeltaInfoStream = QVector<DeltaInfo>;
 
 void writeDeltaLog(QTextStream& log, const DeltaInfo& info) noexcept;
