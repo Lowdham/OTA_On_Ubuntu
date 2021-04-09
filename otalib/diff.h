@@ -28,7 +28,7 @@ bool generateDeltaPack(QDir& oldfile, QDir& newfile, QDir& rollback_dest,
                        QDir& update_dest) noexcept;
 
 // Apply the delta pack to update/rollback app.
-bool applyDeltaPack(QDir& pack, QDir& target) noexcept;
+bool applyDeltaPack(QDir& pack, QDir& target, bool safe_mode = false) noexcept;
 
 }  // namespace otalib::bs
 

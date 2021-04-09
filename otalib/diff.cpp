@@ -109,9 +109,20 @@ bool doChangeActionLog(QByteArray& buffer_old, QByteArray& buffer_new,
                           buffer_new.size(), &stream) == 0;
     delta.close();
     if (success) {
-      writeDeltaLog(
-          ulog, {Action::DELTA, Category::FILE, pos,
-                 QString::fromStdString(::std::to_string(buffer_new.size()))});
+      // Additional info stores in opaque.
+      // opaque ::= _1/_2/_3
+      // _1 : The size of new file.
+      // _2 : The md5 value of old file.
+      // _3 : The md5 value of new file.
+      QCryptographicHash hash(QCryptographicHash::Md5);
+      hash.addData(buffer_old);
+      ::std::string opaque = ::std::to_string(buffer_new.size());
+      opaque += "/" + hash.result().toStdString();
+      hash.reset();
+      hash.addData(buffer_new);
+      opaque += "/" + hash.result().toStdString();
+      writeDeltaLog(ulog, {Action::DELTA, Category::FILE, pos,
+                           QString::fromStdString(opaque)});
 
       return true;
     } else {  // bsdiff failed.
@@ -437,8 +448,8 @@ bool doDelete(const DeltaInfo& info, const QDir& pack, const QDir& root) {
   return false;
 }
 
-bool doDelta(const DeltaInfo& info, const QDir& pack,
-             const QDir& root) noexcept {
+bool doDelta(const DeltaInfo& info, const QDir& pack, const QDir& root,
+             bool safe_mode = false) noexcept {
   QString patch_path = pack.absoluteFilePath(info.position + ".r");
   QString source_path = root.absoluteFilePath(info.position);
   switch (info.category) {
@@ -452,7 +463,35 @@ bool doDelta(const DeltaInfo& info, const QDir& pack,
       QFile target(source_path);
       if (patch.open(QFile::ReadOnly) && target.open(QFile::ReadOnly)) {
         QByteArray buffer_target = target.readAll();
-        int filesize = info.opaque.toUInt();
+        QStringList slist = info.opaque.split("/");
+        if (slist.isEmpty()) {
+          print<GeneralFerrorCtrl>(
+              std::cerr, "Applying delta patching Failed. Info is corrupted.");
+          patch.close();
+          target.close();
+          return false;
+        }
+        if (slist.size() != 3) {
+          print<GeneralErrorCtrl>(
+              std::cerr, "Applying delta patch on [" + info.position +
+                             "] meets error. Info might be corrupted. If the "
+                             "safe mode is on, the md5 check will skip.");
+        }
+        if (safe_mode && slist.size() == 3) {
+          QCryptographicHash hash(QCryptographicHash::Md5);
+          hash.addData(buffer_target);
+          if (hash.result().toStdString() != slist.at(1).toStdString()) {
+            // MD5 check failed.
+            print<GeneralErrorCtrl>(
+                std::cerr,
+                "MD5 check on [" + info.position + "] failed. Action aborts.");
+            patch.close();
+            target.close();
+            return false;
+          }
+        }
+
+        int filesize = slist.at(0).toUInt();
         if (filesize == 0) {
           patch.close();
           target.close();
@@ -470,6 +509,30 @@ bool doDelta(const DeltaInfo& info, const QDir& pack,
           // Patch succeed.
           target.close();
           patch.close();
+
+          // Do MD5 check.
+          if (safe_mode) {
+            if (slist.size() == 3) {
+              QCryptographicHash hash(QCryptographicHash::Md5);
+              hash.addData(buffer_result);
+              if (hash.result().toStdString() != slist.at(2).toStdString()) {
+                // Check failed.
+                print<GeneralErrorCtrl>(std::cerr,
+                                        "MD5 check on [" + info.position +
+                                            "] failed. Action aborts.");
+                patch.close();
+                target.close();
+                return false;
+              }
+            } else {
+              // Miss the md5 value.
+              print<GeneralWarnCtrl>(std::cout,
+                                     "[" + info.position +
+                                         "] MD5 check doesn't happen. Cannot "
+                                         "find md5 value in the info.");
+            }
+          }
+
           if (!target.open(QFile::WriteOnly | QFile::Truncate)) {
             print<GeneralFerrorCtrl>(
                 std::cerr,
@@ -518,7 +581,7 @@ bool doDelta(const DeltaInfo& info, const QDir& pack,
 }
 
 bool doApply(const QDir& pack, const QDir& target, QTextStream& log,
-             QTextStream& dlog) noexcept {
+             QTextStream& dlog, bool safe_mode = false) noexcept {
   // Read the info from the dlog
   // Dirty data will be ignored.
   DeltaInfoStream dstrm = readDeltaLog(dlog);
@@ -547,7 +610,7 @@ bool doApply(const QDir& pack, const QDir& target, QTextStream& log,
         success = doDelete(info, pack, target);
         break;
       case Action::DELTA:
-        success = doDelta(info, pack, target);
+        success = doDelta(info, pack, target, safe_mode);
         break;
       default: {
         everything_fine = false;
@@ -597,7 +660,7 @@ bool doApply(const QDir& pack, const QDir& target, QTextStream& log,
 
 }  // namespace
 
-bool applyDeltaPack(QDir& pack, QDir& target) noexcept {
+bool applyDeltaPack(QDir& pack, QDir& target, bool safe_mode) noexcept {
   if constexpr (bs_debug_mode)
     print<GeneralDebugCtrl>(std::cout, "[applyDeltaPack]");
 
@@ -625,7 +688,7 @@ bool applyDeltaPack(QDir& pack, QDir& target) noexcept {
     }
     QTextStream ulog(&ulogf);
     QTextStream dlog(&dlogf);
-    doApply(pack, target, ulog, dlog);
+    doApply(pack, target, ulog, dlog, safe_mode);
     dlogf.close();
     ulogf.close();
     print<GeneralSuccessCtrl>(std::cout, "Patch succeed.");
@@ -645,7 +708,7 @@ bool applyDeltaPack(QDir& pack, QDir& target) noexcept {
     }
     QTextStream rlog(&rlogf);
     QTextStream dlog(&dlogf);
-    doApply(pack, target, rlog, dlog);
+    doApply(pack, target, rlog, dlog, safe_mode);
     dlogf.close();
     rlogf.close();
     print<GeneralSuccessCtrl>(std::cout, "Patch succeed.");
