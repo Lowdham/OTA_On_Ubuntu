@@ -577,12 +577,12 @@ bool doApply(const QDir& pack, const QDir& target, QTextStream& log,
       print<GeneralWarnCtrl>(std::cout,
                              "Error occurs during the perform of action. Do "
                              "you want to continue? [Continues(Y/N)]:");
-      char buf[1];
+      char buf;
     ct:
       scanf("%c", &buf);
-      if (buf[0] == 'y' || buf[0] == 'Y')
+      if (buf == 'y' || buf == 'Y')
         goto goon;
-      else if (buf[0] == 'n' || buf[0] == 'N')
+      else if (buf == 'n' || buf == 'N')
         return false;
       else
         print<GeneralErrorCtrl>(std::cerr,
@@ -628,7 +628,7 @@ bool applyDeltaPack(QDir& pack, QDir& target) noexcept {
     doApply(pack, target, ulog, dlog);
     dlogf.close();
     ulogf.close();
-    print<GeneralInfoCtrl>(std::cout, "Patch succeed.");
+    print<GeneralSuccessCtrl>(std::cout, "Patch succeed.");
     return true;
   }
 
@@ -648,7 +648,7 @@ bool applyDeltaPack(QDir& pack, QDir& target) noexcept {
     doApply(pack, target, rlog, dlog);
     dlogf.close();
     rlogf.close();
-    print<GeneralInfoCtrl>(std::cout, "Patch succeed.");
+    print<GeneralSuccessCtrl>(std::cout, "Patch succeed.");
     return true;
   }
 
