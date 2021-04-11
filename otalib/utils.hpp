@@ -67,6 +67,40 @@ class SpinLock : private QAtomicInt {
   static const int Locked = 0;
 };
 
+namespace {
+// details
+template <bool... Tails>
+struct all_of_impl {};
+
+template <>
+struct all_of_impl<true> : ::std::true_type {};
+
+template <bool... Tails>
+struct all_of_impl<false, Tails...> : ::std::false_type {};
+
+template <int i, typename... Args>
+struct getArg_impl {};
+
+template <int i, typename Head, typename... Tails>
+struct getArg_impl<i, Head, Tails...> {
+  using type = typename getArg_impl<i - 1, Tails...>::type;
+};
+
+template <typename Head, typename... Tails>
+struct getArg_impl<1, Head, Tails...> {
+  using type = Head;
+};
+
+}  // namespace
+
+template <bool... Candidates>
+struct all_of : all_of_impl<Candidates...> {};
+
+template <int i, typename... Args>
+struct getArg {
+  using type = typename getArg_impl<i, Args...>::type;
+};
+
 }  // namespace otalib
 
 #endif  // UTILS_HPP

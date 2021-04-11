@@ -1,6 +1,31 @@
-#include "update_strategy.h"
+#ifndef UPDATE_STRATEGY_HPP
+#define UPDATE_STRATEGY_HPP
+
+#include <QCryptographicHash>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
+#include <QTextStream>
+#include <optional>
+
+#include "logger/logger.h"
+#include "utils.hpp"
+#include "version.hpp"
 
 namespace otalib {
+
+constexpr auto kStrategyFile = "./strategy.json";
+constexpr bool kKeepFileOpen = false;
+
+enum class StrategyAction { update, rollback };
+enum class StrategyType { optional, compulsory, error };
+
+template <typename VersionType>
+using CheckInfo = std::tuple<StrategyAction, StrategyType, VersionType>;
 namespace {
 // Strategy Pattern
 /*
@@ -17,37 +42,37 @@ namespace {
   ## 1
   "compare" = "</<=/==/!=/>=/>",
 
-  ## 1
-  "value" = "XXX"
+## 1
+    "value" = "XXX"
 }
 
 "type" : {
-  ## 1
-  "assign" : "=/!=",
+    ## 1
+        "assign" : "=/!=",
 
-  ## 1
-  "name" : "XXX"
+                   ## 1
+                   "name" : "XXX"
 }
 
 "condition" : {
-  ## 0..1
-  "version" : {...},
+    ## 0..1
+    "version" : {...},
 
-  ## 0..1
-  "type" : {...}
+    ## 0..1
+    "type" : {...}
 }
-*/
+              */
 /*
 "rollback" : [
-  {
-    ## 1
-    "strategy" = "optional/compulsory",
-    ## 0..1
-    "condition" = {...},
-    ## 1
-    "dest" = "XXX"
-  },
-  ...
+{
+## 1
+"strategy" = "optional/compulsory",
+## 0..1
+"condition" = {...},
+## 1
+"dest" = "XXX"
+},
+...
 ]
 
 "update" : [
@@ -61,27 +86,29 @@ namespace {
     },
     ...
 ]
-NOTE: "optional" means the client can decide whether update/rollback or not.
-      "compulsory" means the client must update/rollback.
+           NOTE: "optional" means the client can decide whether update/rollback
+or not. "compulsory" means the client must update/rollback.
 
 Request Json Pattern
 {
-  "name" = "...",
-  "version" = "...",
-  "type" = "..."
+   "name" = "...",
+   "version" = "...",
+   "type" = "..."
 }
 */
 enum class Compare { lt, lte, gt, gte, eq, neq, error };
 
+template <typename VersionType>
 struct ClientInfo {
   QString name;
-  QString version;
+  VersionType version;
   QString type;
 };
 
+template <typename VersionType>
 struct VersionConditionBlock {
   Compare cmp;
-  QString value;
+  VersionType value;
 };
 
 struct TypeConditionBlock {
@@ -89,25 +116,30 @@ struct TypeConditionBlock {
   QString name;
 };
 
+template <typename VersionType>
 struct ConditionBlock {
-  std::optional<VersionConditionBlock> vcond;
+  std::optional<VersionConditionBlock<VersionType>> vcond;
   std::optional<TypeConditionBlock> tcond;
 };
 
+template <typename VersionType>
 struct UpdateBlock {
   StrategyType stg;
-  std::optional<ConditionBlock> cond;
-  QString dest;
+  std::optional<ConditionBlock<VersionType>> cond;
+  VersionType dest;
 };
 
+template <typename VersionType>
 struct RollbackBlock {
   StrategyType stg;
-  std::optional<ConditionBlock> cond;
-  QString dest;
+  std::optional<ConditionBlock<VersionType>> cond;
+  VersionType dest;
 };
 
-VersionConditionBlock receiveVersionCond(const QJsonObject& object) {
-  VersionConditionBlock vcb;
+template <typename VersionType>
+VersionConditionBlock<VersionType> receiveVersionCond(
+    const QJsonObject& object) {
+  VersionConditionBlock<VersionType> vcb;
   if (object.contains("compare") && object.value("compare").isString()) {
     if (object.value("compare").toString() == "==")
       vcb.cmp = Compare::eq;
@@ -126,10 +158,18 @@ VersionConditionBlock receiveVersionCond(const QJsonObject& object) {
   } else
     vcb.cmp = Compare::error;
 
-  if (object.contains("value") && object.value("value").isString())
-    vcb.value = object.value("value").toString();
-  else
-    vcb.value = QString();
+  if constexpr (::std::is_constructible_v<VersionType, QString>) {
+    if (object.contains("value") && object.value("value").isString())
+      vcb.value = VersionType(object.value("value").toString());
+    else
+      vcb.value = VersionType();
+  }
+  if constexpr (::std::is_constructible_v<VersionType, double>) {
+    if (object.contains("value") && object.value("value").isDouble())
+      vcb.value = VersionType(object.value("value").toDouble());
+    else
+      vcb.value = VersionType();
+  }
 
   return vcb;
 }
@@ -154,11 +194,13 @@ TypeConditionBlock receiveTypeCond(const QJsonObject& object) {
   return tcb;
 }
 
-ConditionBlock receiveConditionBlock(const QJsonObject& object) {
-  ConditionBlock cond;
+template <typename VersionType>
+ConditionBlock<VersionType> receiveConditionBlock(const QJsonObject& object) {
+  ConditionBlock<VersionType> cond;
 
   if (object.contains("version") && object.value("version").isObject()) {
-    cond.vcond = receiveVersionCond(object.value("version").toObject());
+    cond.vcond =
+        receiveVersionCond<VersionType>(object.value("version").toObject());
   } else
     cond.vcond = ::std::nullopt;
 
@@ -170,7 +212,7 @@ ConditionBlock receiveConditionBlock(const QJsonObject& object) {
   return cond;
 }
 
-template <typename ActionBlock>
+template <typename ActionBlock, typename VersionType>
 ActionBlock receiveActionBlock(const QJsonObject& object) {
   ActionBlock ab;
 
@@ -185,14 +227,23 @@ ActionBlock receiveActionBlock(const QJsonObject& object) {
     ab.stg = StrategyType::error;
 
   if (object.contains("condition") && object.value("condition").isObject())
-    ab.cond = receiveConditionBlock(object.value("condition").toObject());
+    ab.cond = receiveConditionBlock<VersionType>(
+        object.value("condition").toObject());
   else
     ab.cond = ::std::nullopt;
 
-  if (object.contains("dest") && object.value("dest").isString())
-    ab.dest = object.value("dest").toString();
-  else
-    ab.dest = QString();
+  if constexpr (::std::is_constructible_v<VersionType, QString>) {
+    if (object.contains("dest") && object.value("dest").isString())
+      ab.dest = VersionType(object.value("dest").toString());
+    else
+      ab.dest = VersionType();
+  }
+  if constexpr (::std::is_constructible_v<VersionType, double>) {
+    if (object.contains("dest") && object.value("dest").isDouble())
+      ab.dest = VersionType(object.value("dest").toDouble());
+    else
+      ab.dest = VersionType();
+  }
 
   return ab;
 }
@@ -237,49 +288,40 @@ QJsonArray& getServerStrategy() {
   }
 }
 
-ClientInfo getClientInfo(const QJsonObject& cobj) {
+template <typename VersionType>
+ClientInfo<VersionType> getClientInfo(const QJsonObject& cobj) {
   //
-  ClientInfo ret;
+  ClientInfo<VersionType> ret;
   if (cobj.contains("name") && cobj.value("name").isString())
     ret.name = cobj.value("name").toString();
   else
-    ret.name = QStringLiteral("ERROR");
+    ret.name = QString();
 
-  if (cobj.contains("version") && cobj.value("version").isString())
-    ret.version = cobj.value("version").toString();
-  else
-    ret.version = QStringLiteral("ERROR");
+  if constexpr (::std::is_constructible_v<VersionType, QString>) {
+    if (cobj.contains("version") && cobj.value("version").isString())
+      ret.version = VersionType(cobj.value("version").toString());
+    else
+      ret.version = VersionType();
+  }
+
+  if constexpr (::std::is_constructible_v<VersionType, double>) {
+    if (cobj.contains("version") && cobj.value("version").isDouble())
+      ret.version = VersionType(cobj.value("version").toDouble());
+    else
+      ret.version = VersionType();
+  }
 
   if (cobj.contains("type") && cobj.value("type").isString())
     ret.type = cobj.value("type").toString();
   else
-    ret.type = QStringLiteral("ERROR");
+    ret.type = QString();
 
   return ret;
 }
 
-int compareVersion(const QString& lhs, const QString& rhs) noexcept {
-  // Lhs > Rhs return 1
-  // Lhs == Rhs return 0
-  // Lhs < Rhs return -1
-  QStringList llist = lhs.split(".");
-  QStringList rlist = rhs.split(".");
-  for (int i = 0; i < llist.size(); ++i) {
-    if (i == rlist.size()) return 1;  // lhs is greater than rhs.
-    int result = QString::compare(llist.at(i), rlist.at(i));
-    if (result > 0)
-      return 1;  // lhs is greater than rhs.
-    else if (result == 0)
-      continue;
-    else
-      return -1;  // rhs is greater than lhs.
-  }
-
-  // Equal
-  return 0;
-}
-
-bool checkCondition(const ConditionBlock& cond, const ClientInfo& cinfo) {
+template <typename VersionType>
+bool checkCondition(const ConditionBlock<VersionType>& cond,
+                    const ClientInfo<VersionType>& cinfo) {
   if (cond.tcond.has_value()) {
     // Do type check.
     auto tcond = cond.tcond.value();
@@ -297,27 +339,26 @@ bool checkCondition(const ConditionBlock& cond, const ClientInfo& cinfo) {
     // Do version check.
     auto vcond = cond.vcond.value();
     if (vcond.cmp == Compare::eq)
-      return compareVersion(cinfo.version, vcond.value) == 0;
+      return cinfo.version == vcond.value;
     else if (vcond.cmp == Compare::neq)
-      return compareVersion(cinfo.version, vcond.value) != 0;
+      return cinfo.version != vcond.value;
     else if (vcond.cmp == Compare::lt)
-      return compareVersion(cinfo.version, vcond.value) == -1;
+      return cinfo.version < vcond.value;
     else if (vcond.cmp == Compare::lte)
-      return (compareVersion(cinfo.version, vcond.value) == -1 ||
-              compareVersion(cinfo.version, vcond.value) == 0);
+      return cinfo.version <= vcond.value;
     else if (vcond.cmp == Compare::gt)
-      return compareVersion(cinfo.version, vcond.value) == 1;
+      return cinfo.version > vcond.value;
     else if (vcond.cmp == Compare::gte)
-      return (compareVersion(cinfo.version, vcond.value) == 1 ||
-              compareVersion(cinfo.version, vcond.value) == 0);
+      return cinfo.version >= vcond.value;
   }
   return true;
 }
 
-::std::optional<CheckInfo> applyStrategy(const QJsonObject& strategy,
-                                         const ClientInfo& cinfo) {
+template <typename VersionType>
+::std::optional<CheckInfo<VersionType>> applyStrategy(
+    const QJsonObject& strategy, const ClientInfo<VersionType>& cinfo) {
   auto checkVaildity = [](const auto& block) {
-    if (block.stg == StrategyType::error || block.dest.isEmpty())
+    if (block.stg == StrategyType::error)
       return false;
     else
       return true;
@@ -327,11 +368,15 @@ bool checkCondition(const ConditionBlock& cond, const ClientInfo& cinfo) {
   if (strategy.contains("update") && strategy.value("update").isArray()) {
     auto update_list = strategy.value("update").toArray();
     for (auto iter : update_list) {
-      UpdateBlock ud = receiveActionBlock<UpdateBlock>(iter.toObject());
+      UpdateBlock<VersionType> ud =
+          receiveActionBlock<UpdateBlock<VersionType>, VersionType>(
+              iter.toObject());
       if (!ud.cond.has_value() ||
-          (ud.cond.has_value() && checkCondition(ud.cond.value(), cinfo))) {
+          (ud.cond.has_value() &&
+           checkCondition<VersionType>(ud.cond.value(), cinfo))) {
         if (checkVaildity(ud))
-          return CheckInfo{StrategyAction::update, ud.stg, ud.dest};
+          return CheckInfo<VersionType>{StrategyAction::update, ud.stg,
+                                        ud.dest};
         else
           return ::std::nullopt;
       }
@@ -341,11 +386,15 @@ bool checkCondition(const ConditionBlock& cond, const ClientInfo& cinfo) {
   if (strategy.contains("rollback") && strategy.value("rollback").isArray()) {
     auto rollback_list = strategy.value("rollback").toArray();
     for (auto iter : rollback_list) {
-      RollbackBlock rb = receiveActionBlock<RollbackBlock>(iter.toObject());
+      RollbackBlock<VersionType> rb =
+          receiveActionBlock<RollbackBlock<VersionType>, VersionType>(
+              iter.toObject());
       if (!rb.cond.has_value() ||
-          (rb.cond.has_value() && checkCondition(rb.cond.value(), cinfo))) {
+          (rb.cond.has_value() &&
+           checkCondition<VersionType>(rb.cond.value(), cinfo))) {
         if (checkVaildity(rb))
-          return CheckInfo{StrategyAction::rollback, rb.stg, rb.dest};
+          return CheckInfo<VersionType>{StrategyAction::rollback, rb.stg,
+                                        rb.dest};
         else
           return ::std::nullopt;
       }
@@ -356,7 +405,9 @@ bool checkCondition(const ConditionBlock& cond, const ClientInfo& cinfo) {
   return ::std::nullopt;
 }
 
-::std::optional<CheckInfo> matchStrategy(const ClientInfo& cinfo) {
+template <typename VersionType>
+::std::optional<CheckInfo<VersionType>> matchStrategy(
+    const ClientInfo<VersionType>& cinfo) {
   //
   const QJsonArray& strategy = getServerStrategy();
   for (auto iter : strategy) {
@@ -364,7 +415,7 @@ bool checkCondition(const ConditionBlock& cond, const ClientInfo& cinfo) {
       QJsonObject current = iter.toObject();
       if (current.contains("name") && current.value("name").isString() &&
           current.value("name").toString() == cinfo.name) {
-        return applyStrategy(current, cinfo);  // Match succeed.
+        return applyStrategy<VersionType>(current, cinfo);  // Match succeed.
       } else
         continue;  // Match failed.
     } else {
@@ -378,14 +429,18 @@ bool checkCondition(const ConditionBlock& cond, const ClientInfo& cinfo) {
 }
 
 }  // namespace
-
-::std::optional<CheckInfo> updateStrategyCheck(const QByteArray& raw) {
+// 1: Get client infos in jdoc_client.
+// 2: Check the strategy by using infos given by the client.
+// 3: Return the target pack directory according to the strategy.
+template <typename VersionType>
+::std::optional<CheckInfo<VersionType>> updateStrategyCheck(
+    const QByteArray& raw) {
   //
   QJsonParseError err;
   QJsonDocument doc = QJsonDocument::fromJson(raw, &err);
   if (err.error == QJsonParseError::NoError && doc.isObject()) {
     //
-    return matchStrategy(getClientInfo(doc.object()));
+    return matchStrategy<VersionType>(getClientInfo<VersionType>(doc.object()));
   } else {
     // Error
     return ::std::nullopt;
@@ -393,3 +448,5 @@ bool checkCondition(const ConditionBlock& cond, const ClientInfo& cinfo) {
 }
 
 }  // namespace otalib
+
+#endif  // UPDATE_STRATEGY_HPP

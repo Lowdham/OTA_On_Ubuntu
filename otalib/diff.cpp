@@ -463,21 +463,19 @@ bool doDelta(const DeltaInfo& info, const QDir& pack, const QDir& root,
       QFile target(source_path);
       if (patch.open(QFile::ReadOnly) && target.open(QFile::ReadOnly)) {
         QByteArray buffer_target = target.readAll();
-        QStringList slist = info.opaque.split("/");
+        QStringList slist = info.opaque.split("/", Qt::SkipEmptyParts);
         if (slist.isEmpty()) {
           print<GeneralFerrorCtrl>(
               std::cerr, "Applying delta patching Failed. Info is corrupted.");
           patch.close();
           target.close();
           return false;
-        }
-        if (slist.size() != 3) {
+        } else if (safe_mode && slist.size() != 3) {
           print<GeneralErrorCtrl>(
               std::cerr, "Applying delta patch on [" + info.position +
                              "] meets error. Info might be corrupted. If the "
                              "safe mode is on, the md5 check will skip.");
-        }
-        if (safe_mode && slist.size() == 3) {
+        } else if (safe_mode && slist.size() == 3) {
           QCryptographicHash hash(QCryptographicHash::Md5);
           hash.addData(buffer_target);
           if (hash.result().toStdString() != slist.at(1).toStdString()) {
