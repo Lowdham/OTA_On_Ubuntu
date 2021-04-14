@@ -13,7 +13,7 @@
 
 namespace otalib {
 
-using VerDiff = int16_t;
+using VerDiff = int32_t;
 using VerDist = int32_t;
 using VerIndex = int32_t;
 using LevelType = int16_t;
@@ -27,18 +27,7 @@ constexpr VerDist kVcmBasicDistance = 3;
 // It denote the n value in log(n)
 constexpr uint16_t kVcmFactor = 2;
 
-constexpr uint16_t kMaxHops = std::numeric_limits<uint16_t>::max();
-
-enum HopType { vRollback, vUpdate };
-
-template <HopType>
-struct SearchStrategy {
-  static constexpr bool value = false;
-};
-template <>
-struct SearchStrategy<vUpdate> {
-  static constexpr bool value = true;
-};
+enum class SearchStrategy { vUpdate, vRollback };
 
 template <typename VersionType>
 class VersionMap {
@@ -80,9 +69,10 @@ class VersionMap {
     return true;
   }
 
-  template <HopType type = vUpdate>
+  // Thread-safe method for search the shortest path from "start" to "end".
+  template <SearchStrategy stg = SearchStrategy::vUpdate>
   std::vector<EdgeType> search(const VersionType& start,
-                               const VersionType& end) noexcept {
+                               const VersionType& end) const noexcept {
     std::vector<EdgeType> route_path;
     if (lp.count(start) == 0 || lp.count(end) == 0) return route_path;
 
@@ -90,97 +80,107 @@ class VersionMap {
     VerIndex goalIndex = lp.at(end);
 
     std::vector<VerIndex> vs;
-    srand(time(0));
-    memset(vis_.data(), 0, kMaxHops);
-    curMinHops_ = kMaxHops;
-
-    dfs<type>(vs, route_path, startIndex, 1, goalIndex);
+    CalculateUnit<stg> unit(stor.size() + 10,
+                            this);  // The extra "10" is as a buffer.
+    unit.dfs(vs, route_path, startIndex, 1, goalIndex);
 
     return route_path;
   }
 
  private:
-  uint16_t curMinHops_ = kMaxHops;
-  std::array<bool, kMaxHops> vis_;
+  template <SearchStrategy stg = SearchStrategy::vUpdate>
+  struct CalculateUnit {
+    VerIndex curMinHops_;
+    bool* vis_;
+    const VersionMap<VersionType>* parent_;
+
+    CalculateUnit(VerIndex min_hop, const VersionMap<VersionType>* p)
+        : curMinHops_(min_hop), vis_(new bool[min_hop]), parent_(p) {
+      memset(vis_, 0, min_hop);
+    }
+
+    ~CalculateUnit() { delete[] vis_; }
+
+    inline void dfs(std::vector<VerIndex>& indexs, std::vector<EdgeType>& edges,
+                    VerIndex i, VerDist d, VerIndex goal) {
+      if (i == goal) {
+        VerIndex hops = indexs.size(), k;
+        if (hops == 0) return;
+        if (hops < curMinHops_) {
+          curMinHops_ = hops;
+          edges.clear();
+          for (k = 0; k + 1 < hops; ++k) {
+            edges.emplace_back(std::make_pair(indexs[k], indexs[k + 1]));
+          }
+          if (k == hops - 1) {
+            edges.emplace_back(std::make_pair(indexs[k], goal));
+          }
+        }
+        return;
+      }
+
+      if (curMinHops_ < indexs.size()) return;
+
+      // max level
+      LevelType level =
+          parent_->levelOfDistance(parent_->distanceOfVerIndex(i, goal));
+
+      for (LevelType l = level; l >= 0; l--) {
+        // the index is in level
+        if (parent_->checkHit(l, i)) {
+          d = parent_->distanceOfLevel(l);
+          break;
+        }
+      }
+
+      if constexpr (stg == SearchStrategy::vUpdate) {
+        // ignored...
+        double p = (double)rand() / RAND_MAX;
+        if (p < 0.8) d = -d;
+        // d = -d;
+      }
+      // rollback/update
+      if (parent_->checkVerIndex(i - d) && !vis_[i - d]) {
+        indexs.emplace_back(i);
+        vis_[i] = true;
+        dfs(indexs, edges, i - d, d, goal);
+        vis_[i] = false;
+        indexs.pop_back();
+      }
+      // update/rollback
+      if (parent_->checkVerIndex(i + d) && !vis_[i + d]) {
+        indexs.emplace_back(i);
+        vis_[i] = true;
+        dfs(indexs, edges, i + d, d, goal);
+        vis_[i] = false;
+        indexs.pop_back();
+      }
+    }
+  };
 
  private:
-  template <HopType type = vUpdate>
-  inline void dfs(std::vector<VerIndex>& indexs, std::vector<EdgeType>& edges,
-                  VerIndex i, VerDist d, VerIndex goal) {
-    if (i == goal) {
-      int32_t hops = indexs.size(), k;
-      if (hops == 0) return;
-      if (hops < curMinHops_) {
-        curMinHops_ = hops;
-        edges.clear();
-        for (k = 0; k + 1 < hops; ++k) {
-          edges.emplace_back(std::make_pair(indexs[k], indexs[k + 1]));
-        }
-        if (k == hops - 1) {
-          edges.emplace_back(std::make_pair(indexs[k], goal));
-        }
-      }
-      return;
-    }
-
-    if (curMinHops_ < indexs.size()) return;
-
-    // max level
-    LevelType level = getLevelbyDistanceVerIndex(distanceOfVerIndex(i, goal));
-
-    for (LevelType l = level; l >= 0; l--) {
-      // the index is in level
-      if (checkHit(l, i)) {
-        d = distanceOfLevel(l);
-        break;
-      }
-    }
-
-    if constexpr (SearchStrategy<type>::value) {
-      // ignored...
-      // double p = (double)rand() / RAND_MAX;
-      // if (p < 0.8) d = -d;
-      d = -d;
-    }
-    // rollback/update
-    if (checkVerIndex(i - d) && !vis_[i - d]) {
-      indexs.emplace_back(i);
-      vis_[i] = true;
-      dfs<type>(indexs, edges, i - d, d, goal);
-      vis_[i] = false;
-      indexs.pop_back();
-    }
-    // update/rollback
-    if (checkVerIndex(i + d) && !vis_[i + d]) {
-      indexs.emplace_back(i);
-      vis_[i] = true;
-      dfs<type>(indexs, edges, i + d, d, goal);
-      vis_[i] = false;
-      indexs.pop_back();
-    }
-  }
-
   inline constexpr bool checkVerIndex(VerIndex index) const noexcept {
     return index >= 0 && index < (VerIndex)stor.size();
   }
 
   // Select an appropriate level from the current index difference
-  inline constexpr LevelType getLevelbyDistanceVerIndex(
-      VerDist dist) const noexcept {
+  inline constexpr LevelType levelOfDistance(VerDist dist) const noexcept {
     LevelType level = 0;
-    if (dist >= 0 && dist < 3) return level;
-    VerIndex l = 3;
+    if (dist >= 0 && dist < kVcmBasicDistance) return level;
+    VerIndex l = kVcmBasicDistance;
     while (dist >= l) {
       level++;
       l <<= 1;
     }
     return level;
   }
-  inline constexpr VerDist distanceOfVerIndex(VerIndex i,
-                                              VerIndex j) const noexcept {
-    if (i < j) return j - i;
-    return i - j;
+
+  // Get the distance of two index.
+  inline constexpr VerDist distanceOfVerIndex(VerIndex i, VerIndex j) const
+      noexcept {
+    return i < j ? j - i : i - j;
   }
+
   // Get the distance value on a certain level.
   inline constexpr VerDist distanceOfLevel(LevelType level) const noexcept {
     if (level == 0) return 1;
@@ -192,8 +192,8 @@ class VersionMap {
   }
 
   // Check whether the node is on a certain level.
-  inline constexpr bool checkHit(uint16_t level,
-                                 uint16_t index) const noexcept {
+  inline constexpr bool checkHit(uint16_t level, uint16_t index) const
+      noexcept {
     return index % distanceOfLevel(level) == 0;
   }
 
