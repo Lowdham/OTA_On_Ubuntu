@@ -119,7 +119,7 @@ class VersionMap {
         return;
       }
 
-      if (curMinHops_ < indexs.size()) return;
+      if (curMinHops_ < (VerIndex)indexs.size()) return;
 
       // max level
       LevelType level =
@@ -176,8 +176,8 @@ class VersionMap {
   }
 
   // Get the distance of two index.
-  inline constexpr VerDist distanceOfVerIndex(VerIndex i, VerIndex j) const
-      noexcept {
+  inline constexpr VerDist distanceOfVerIndex(VerIndex i,
+                                              VerIndex j) const noexcept {
     return i < j ? j - i : i - j;
   }
 
@@ -192,8 +192,8 @@ class VersionMap {
   }
 
   // Check whether the node is on a certain level.
-  inline constexpr bool checkHit(uint16_t level, uint16_t index) const
-      noexcept {
+  inline constexpr bool checkHit(uint16_t level,
+                                 uint16_t index) const noexcept {
     return index % distanceOfLevel(level) == 0;
   }
 
