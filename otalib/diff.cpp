@@ -427,6 +427,7 @@ bool doAdd(const DeltaInfo& info, const QDir& pack, const QDir& root) {
 }
 
 bool doDelete(const DeltaInfo& info, const QDir& pack, const QDir& root) {
+  Q_UNUSED(pack);
   QString dpath = root.absoluteFilePath(info.position);
   switch (info.category) {
     case Category::DIR:
