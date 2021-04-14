@@ -1,9 +1,10 @@
 #ifndef VERSION_H
 #define VERSION_H
 
-#include <logger/logger.h>
 #include <QString>
 #include <QStringList>
+
+#include "logger/logger.h"
 
 namespace otalib {
 
@@ -41,14 +42,14 @@ struct Version {
                                  static_cast<const DerivedClass&>(rhs)) != 0;
   }
 
-  inline decltype(auto) operator-(const Version<DerivedClass>& rhs) const
-      noexcept {
+  inline decltype(auto) operator-(
+      const Version<DerivedClass>& rhs) const noexcept {
     return DerivedClass::minus(static_cast<const DerivedClass&>(*this),
                                static_cast<const DerivedClass&>(rhs));
   }
 
-  inline decltype(auto) operator+(const Version<DerivedClass>& rhs) const
-      noexcept {
+  inline decltype(auto) operator+(
+      const Version<DerivedClass>& rhs) const noexcept {
     return DerivedClass::add(static_cast<const DerivedClass&>(*this),
                              static_cast<const DerivedClass&>(rhs));
   }
@@ -64,6 +65,7 @@ class GeneralVersion : public Version<GeneralVersion> {
       return false;
     else
       for (int i = 0; i < 3; ++i) version[i] = vlist.at(i).toInt();
+    return true;
   }
 
  public:
