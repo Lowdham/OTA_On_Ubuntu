@@ -19,10 +19,13 @@ using VerIndex = int32_t;
 using LevelType = int16_t;
 
 // It denote the max level that skiplist can build.
-constexpr LevelType kVcmMaxLevel = 8;
+// MaxIndexs = 3 * 2^(n-1)
+constexpr LevelType kVcmMaxLevel = 30;
 
 // It denote the distance in the level 1
-constexpr VerDist kVcmBasicDistance = 3;
+// Kvcmbasicdistance should be kept as small as possible and should be a power
+// of 2
+constexpr VerDist kVcmBasicDistance = 2;
 
 // It denote the n value in log(n)
 constexpr uint16_t kVcmFactor = 2;
@@ -119,6 +122,7 @@ class VersionMap {
         return;
       }
 
+      // prune
       if (curMinHops_ < (VerIndex)indexs.size()) return;
 
       // max level
