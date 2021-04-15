@@ -1,12 +1,13 @@
-#include "../../otalib/vcm.hpp"
 #include "../../otalib/logger/logger.h"
+#include "../../otalib/vcm.hpp"
 
 using namespace otalib;
 
 void test_vcm() {
+  srand(time(0));
   VersionMap<int> vm;
-  for (int i = 0; i <= 5000; i++) vm.append(i, true);
-  auto r = vm.search<SearchStrategy::vUpdate>(2310, 3211);
+  for (int i = 0; i <= 500000; i++) vm.append(i, true);
+  auto r = vm.search<SearchStrategy::vUpdate>(203824, 454300);
   if (r.empty()) {
     print<GeneralWarnCtrl>(std::cout, "Not Found!");
     return;
