@@ -13,7 +13,7 @@
 namespace otalib {
 
 static constexpr char kHeadTagFatalError[] = "[FATAL ERROR]";
-static constexpr char kHeadTagError[] = "[FATAL ERROR]";
+static constexpr char kHeadTagError[] = "[ERROR]";
 static constexpr char kHeadTagDebug[] = "[DEBUG]";
 static constexpr char kHeadTagWarn[] = "[WARNNING]";
 static constexpr char kHeadTagInfo[] = "[INFO]";
