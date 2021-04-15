@@ -57,7 +57,7 @@ class VersionMap {
 
  public:
   VersionMap()
-      : lp(VersionType::vcm_capacity, VersionType::hasher()),
+      : lp(VersionType::vcm_capacity, typename VersionType::hasher()),
         stor(),
         callback_on_ac() {}
 
@@ -197,8 +197,8 @@ class VersionMap {
   }
 
   // Get the distance of two index.
-  inline constexpr VerDist distanceOfVerIndex(VerIndex i, VerIndex j) const
-      noexcept {
+  inline constexpr VerDist distanceOfVerIndex(VerIndex i,
+                                              VerIndex j) const noexcept {
     return i < j ? j - i : i - j;
   }
 
@@ -213,8 +213,8 @@ class VersionMap {
   }
 
   // Check whether the node is on a certain level.
-  inline constexpr bool checkHit(LevelType level, VerIndex index) const
-      noexcept {
+  inline constexpr bool checkHit(LevelType level,
+                                 VerIndex index) const noexcept {
     return index % distanceOfLevel(level) == 0;
   }
 
