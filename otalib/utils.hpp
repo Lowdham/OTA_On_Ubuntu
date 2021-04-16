@@ -79,15 +79,15 @@ template <bool... Tails>
 struct all_of_impl<false, Tails...> : ::std::false_type {};
 
 template <int i, typename... Args>
-struct getArg_impl {};
+struct get_arg_impl {};
 
 template <int i, typename Head, typename... Tails>
-struct getArg_impl<i, Head, Tails...> {
-  using type = typename getArg_impl<i - 1, Tails...>::type;
+struct get_arg_impl<i, Head, Tails...> {
+  using type = typename get_arg_impl<i - 1, Tails...>::type;
 };
 
 template <typename Head, typename... Tails>
-struct getArg_impl<1, Head, Tails...> {
+struct get_arg_impl<1, Head, Tails...> {
   using type = Head;
 };
 
@@ -97,8 +97,8 @@ template <bool... Candidates>
 struct all_of : all_of_impl<Candidates...> {};
 
 template <int i, typename... Args>
-struct getArg {
-  using type = typename getArg_impl<i, Args...>::type;
+struct get_arg {
+  using type = typename get_arg_impl<i, Args...>::type;
 };
 
 }  // namespace otalib
