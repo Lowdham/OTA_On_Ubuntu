@@ -35,7 +35,6 @@
 #include <QCryptographicHash>
 #include <QFile>
 #include <QFileInfo>
-
 #include <iostream>
 
 #include "logger/logger.h"

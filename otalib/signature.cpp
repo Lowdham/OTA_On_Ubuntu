@@ -29,7 +29,7 @@
 namespace otalib {
 namespace sig_details {
 // Create_RSA function creates public key and private key file
-RSA* create_RSA(RSA* keypair, int pem_type, char* file_name) {
+RSA* create_RSA(RSA* keypair, int pem_type, const char* file_name) {
   RSA* rsa = NULL;
   FILE* fp = NULL;
 
@@ -44,7 +44,7 @@ RSA* create_RSA(RSA* keypair, int pem_type, char* file_name) {
 
   } else if (pem_type == kPrivateKeyPem) {
     fp = fopen(file_name, "w");
-    PEM_write_RSAPrivateKey(fp, keypair, NULL, NULL, NULL, NULL, NULL);
+    PEM_write_RSAPrivateKey(fp, keypair, NULL, NULL, 0, NULL, NULL);
     fclose(fp);
 
     fp = fopen(file_name, "rb");
@@ -87,8 +87,8 @@ void create_encrypted_file(char* encrypted, RSA* key_pair) {
 }  // namespace sig_details
 
 void generateKeyPair() {
-  RSA* private_key;
-  RSA* public_key;
+  RSA* private_key = NULL;
+  RSA* public_key = NULL;
   RSA* keypair = NULL;
   BIGNUM* bne = NULL;
   int ret = 0;
@@ -110,6 +110,7 @@ void generateKeyPair() {
         std::cerr, "An error occurred in RSA_generate_key_ex() method");
     free(bne);
     free(keypair);
+    return;
   }
   private_key =
       sig_details::create_RSA(keypair, kPrivateKeyPem, private_key_pem);
@@ -123,10 +124,9 @@ void generateKeyPair() {
   free(public_key);
   free(keypair);
   free(bne);
-  return;
 }
 
-QByteArray encrypt(QFile* file, RSA* prikey) {
+QByteArray encrypt(QFile* file, RSA* public_key) {
   if (!file->isOpen()) return QByteArray();
 
   // Get the hash value of file.
@@ -135,7 +135,7 @@ QByteArray encrypt(QFile* file, RSA* prikey) {
   QByteArray summary = hash.result();
 
   // KeyEncrypt
-  char* sig = static_cast<char*>(malloc(RSA_size(prikey)));
+  char* sig = static_cast<char*>(malloc(RSA_size(public_key)));
   if (!sig) {
     print<GeneralFerrorCtrl>(std::cerr,
                              "Cannot allocate memories for signature.");
@@ -144,15 +144,17 @@ QByteArray encrypt(QFile* file, RSA* prikey) {
 
   int sig_length = sig_details::public_encrypt(
       summary.size() + 1, reinterpret_cast<unsigned char*>(summary.data()),
-      reinterpret_cast<unsigned char*>(sig), prikey, RSA_PKCS1_OAEP_PADDING);
+      reinterpret_cast<unsigned char*>(sig), public_key,
+      RSA_PKCS1_OAEP_PADDING);
   if (sig_length == -1) {
     print<GeneralFerrorCtrl>(std::cerr, "Error occurred in encrypt().");
     free(sig);
     return QByteArray();
   }
 
+  QByteArray data(sig, sig_length);
   free(sig);
-  return QByteArray(sig, sig_length);
+  return data;
 }
 
 bool verify(const QByteArray& hval, QByteArray& sig,
