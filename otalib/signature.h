@@ -54,7 +54,7 @@ void generateKeyPair();
 QByteArray encrypt(QFile* file, RSA* public_key);
 
 //
-bool verify(const QByteArray& hval, const QByteArray& sig,
+bool verify(const QByteArray& hval, QByteArray& sig,
             const QFileInfo& kfile) noexcept;
 
 }  // namespace otalib

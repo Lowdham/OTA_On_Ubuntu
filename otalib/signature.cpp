@@ -28,6 +28,10 @@
 
 namespace otalib {
 namespace sig_details {
+
+// help info
+// https://stackoverflow.com/questions/7818117/why-i-cant-read-openssl-generated-rsa-pub-key-with-pem-read-rsapublickey
+
 // Create_RSA function creates public key and private key file
 RSA* create_RSA(RSA* keypair, int pem_type, const char* file_name) {
   RSA* rsa = NULL;
@@ -126,7 +130,7 @@ void generateKeyPair() {
   free(bne);
 }
 
-QByteArray encrypt(QFile* file, RSA* private_key) {
+QByteArray encrypt(QFile* file, RSA* public_key) {
   if (!file->isOpen()) return QByteArray();
 
   // Get the hash value of file.
@@ -134,8 +138,9 @@ QByteArray encrypt(QFile* file, RSA* private_key) {
   hash.addData(file);
   QByteArray summary = hash.result();
 
+  int size = RSA_size(public_key);
   // KeyEncrypt
-  char* sig = static_cast<char*>(malloc(RSA_size(private_key)));
+  char* sig = static_cast<char*>(malloc(size));
   if (!sig) {
     print<GeneralFerrorCtrl>(std::cerr,
                              "Cannot allocate memories for signature.");
@@ -144,7 +149,7 @@ QByteArray encrypt(QFile* file, RSA* private_key) {
 
   int sig_length = sig_details::public_encrypt(
       summary.size() + 1, reinterpret_cast<unsigned char*>(summary.data()),
-      reinterpret_cast<unsigned char*>(sig), private_key,
+      reinterpret_cast<unsigned char*>(sig), public_key,
       RSA_PKCS1_OAEP_PADDING);
   if (sig_length == -1) {
     print<GeneralFerrorCtrl>(std::cerr, "Error occurred in encrypt().");
@@ -160,20 +165,21 @@ QByteArray encrypt(QFile* file, RSA* private_key) {
 bool verify(const QByteArray& hval, QByteArray& sig,
             const QFileInfo& kfile) noexcept {
   //
-  BIO* pubio = NULL;
-  pubio = BIO_new_file(kfile.absolutePath().toStdString().c_str(), "rb");
-  RSA* pubkey = PEM_read_bio_RSAPrivateKey(pubio, &pubkey, NULL, NULL);
-  BIO_vfree(pubio);
+  FILE* priio = NULL;
+  priio = fopen(kfile.filePath().toStdString().c_str(), "rb");
+  RSA* prikey = PEM_read_RSAPrivateKey(priio, NULL, NULL, NULL);  //
+  fclose(priio);
 
-  char* plain = static_cast<char*>(malloc(sig.size()));
+  char* plain = static_cast<char*>(malloc(sig.size() * sizeof(char)));
   if (!plain) {
     print<GeneralFerrorCtrl>(std::cerr,
                              "Cannot allocate memories for plaintext.");
+
     return false;
   }
   int plain_length = sig_details::private_decrypt(
       sig.size(), reinterpret_cast<unsigned char*>(sig.data()),
-      reinterpret_cast<unsigned char*>(plain), pubkey, RSA_PKCS1_OAEP_PADDING);
+      reinterpret_cast<unsigned char*>(plain), prikey, RSA_PKCS1_OAEP_PADDING);
   if (plain_length == -1) {
     print<GeneralFerrorCtrl>(std::cerr, "Error occurred in decrypt().");
     free(plain);
@@ -181,11 +187,11 @@ bool verify(const QByteArray& hval, QByteArray& sig,
   }
 
   // Do a quick comparsion.
-  if (plain_length != hval.size()) {
+  if (plain_length - 1 != hval.size()) {
     free(plain);
     return false;
   }
-  for (int i = 0; i < plain_length; ++i)
+  for (int i = 0; i < plain_length - 1; ++i)
     if (plain[i] != hval[i]) {
       free(plain);
       return false;
