@@ -126,7 +126,7 @@ void generateKeyPair() {
   free(bne);
 }
 
-QByteArray encrypt(QFile* file, RSA* public_key) {
+QByteArray encrypt(QFile* file, RSA* private_key) {
   if (!file->isOpen()) return QByteArray();
 
   // Get the hash value of file.
@@ -135,7 +135,7 @@ QByteArray encrypt(QFile* file, RSA* public_key) {
   QByteArray summary = hash.result();
 
   // KeyEncrypt
-  char* sig = static_cast<char*>(malloc(RSA_size(public_key)));
+  char* sig = static_cast<char*>(malloc(RSA_size(private_key)));
   if (!sig) {
     print<GeneralFerrorCtrl>(std::cerr,
                              "Cannot allocate memories for signature.");
@@ -144,7 +144,7 @@ QByteArray encrypt(QFile* file, RSA* public_key) {
 
   int sig_length = sig_details::public_encrypt(
       summary.size() + 1, reinterpret_cast<unsigned char*>(summary.data()),
-      reinterpret_cast<unsigned char*>(sig), public_key,
+      reinterpret_cast<unsigned char*>(sig), private_key,
       RSA_PKCS1_OAEP_PADDING);
   if (sig_length == -1) {
     print<GeneralFerrorCtrl>(std::cerr, "Error occurred in encrypt().");
