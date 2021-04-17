@@ -51,7 +51,7 @@ void generateKeyPair();
 
 // Requrie the file has already opened.
 // Return the signature of file after RSA encrpyting.
-QByteArray encrypt(QFile* file, QFile* public_key);
+QByteArray encrypt(QFile* file, RSA* public_key);
 
 //
 bool verify(const QByteArray& hval, const QByteArray& sig,
