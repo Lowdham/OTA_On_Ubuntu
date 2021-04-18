@@ -137,10 +137,13 @@ QByteArray encrypt(QFile* file, RSA* public_key) {
   QCryptographicHash hash(kHashAlgorithm);
   hash.addData(file);
   QByteArray summary = hash.result();
+  if (summary.size() % 128 != 0) {
+    int i = summary.size() / 128;
+    summary.resize(128 * (i + 1));
+  }
 
-  int size = RSA_size(public_key);
   // KeyEncrypt
-  char* sig = static_cast<char*>(malloc(size));
+  char* sig = static_cast<char*>(malloc(RSA_size(public_key)));
   if (!sig) {
     print<GeneralFerrorCtrl>(std::cerr,
                              "Cannot allocate memories for signature.");
@@ -170,7 +173,7 @@ bool verify(const QByteArray& hval, QByteArray& sig,
   RSA* prikey = PEM_read_RSAPrivateKey(priio, NULL, NULL, NULL);  //
   fclose(priio);
 
-  char* plain = static_cast<char*>(malloc(sig.size() * sizeof(char)));
+  char* plain = static_cast<char*>(malloc(sig.size() * sizeof(char)));  //
   if (!plain) {
     print<GeneralFerrorCtrl>(std::cerr,
                              "Cannot allocate memories for plaintext.");
@@ -186,13 +189,19 @@ bool verify(const QByteArray& hval, QByteArray& sig,
     return false;
   }
 
+  QByteArray val = hval;
+  if (val.size() % 128 != 0) {
+    int i = val.size() / 128;
+    val.resize(128 * (i + 1));
+  }
+
   // Do a quick comparsion.
-  if (plain_length - 1 != hval.size()) {
+  if (plain_length - 1 != val.size()) {
     free(plain);
     return false;
   }
   for (int i = 0; i < plain_length - 1; ++i)
-    if (plain[i] != hval[i]) {
+    if (plain[i] != val[i]) {
       free(plain);
       return false;
     }
