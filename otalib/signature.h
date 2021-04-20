@@ -46,12 +46,13 @@ constexpr int32_t kPublicExponent = 59;
 constexpr int32_t kPublicKeyPem = 1;
 constexpr int32_t kPrivateKeyPem = 0;
 constexpr auto kHashAlgorithm = QCryptographicHash::Md5;
+constexpr int kSignHashAlgorithm = NID_sha256;
 
 void generateKeyPair();
 
 // Requrie the file has already opened.
 // Return the signature of file after RSA encrpyting.
-QByteArray encrypt(QFile* file, RSA* public_key);
+QByteArray sign(QFile* file, RSA* private_key);
 
 //
 bool verify(const QByteArray& hval, QByteArray& sig,

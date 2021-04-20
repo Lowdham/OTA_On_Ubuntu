@@ -1,36 +1,7 @@
-/*
- * MIT License
- *
- * Copyright (c) 2020 Batuhan AVLAYAN
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to
- * deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
- *
- * Copyright (c) 2021 THF5000 thf5000y2k@gmail.com
- */
-
 #include "signature.h"
 
 namespace otalib {
 namespace sig_details {
-
-// help info
-// https://stackoverflow.com/questions/7818117/why-i-cant-read-openssl-generated-rsa-pub-key-with-pem-read-rsapublickey
 
 // Create_RSA function creates public key and private key file
 RSA* create_RSA(RSA* keypair, int pem_type, const char* file_name) {
@@ -59,35 +30,6 @@ RSA* create_RSA(RSA* keypair, int pem_type, const char* file_name) {
   return rsa;
 }
 
-/*
- * @brief   public_ecrypt function encrypts data.
- * @return  If It is fail, return -1
- */
-int public_encrypt(int flen, unsigned char* from, unsigned char* to, RSA* key,
-                   int padding) {
-  int result = RSA_public_encrypt(flen, from, to, key, padding);
-  return result;
-}
-
-/*
- * @brief   private_decrypt function decrypt data.
- * @return  If It is fail, return -1
- */
-int private_decrypt(int flen, unsigned char* from, unsigned char* to, RSA* key,
-                    int padding) {
-  int result = RSA_private_decrypt(flen, from, to, key, padding);
-  return result;
-}
-
-/*
- * @brief   create_ecrypted_file function creates .bin file. It contains
- * encrypted data.
- */
-void create_encrypted_file(char* encrypted, RSA* key_pair) {
-  FILE* encrypted_file = fopen("encrypted_file.bin", "w");
-  fwrite(encrypted, sizeof(*encrypted), RSA_size(key_pair), encrypted_file);
-  fclose(encrypted_file);
-}
 }  // namespace sig_details
 
 void generateKeyPair() {
@@ -130,84 +72,50 @@ void generateKeyPair() {
   free(bne);
 }
 
-QByteArray encrypt(QFile* file, RSA* public_key) {
-  if (!file->isOpen()) return QByteArray();
+QByteArray sign(QFile* file, RSA* private_key) {
+  if (!file->isOpen()) return {QByteArray(), -1};
 
   // Get the hash value of file.
   QCryptographicHash hash(kHashAlgorithm);
   hash.addData(file);
   QByteArray summary = hash.result();
-  if (summary.size() % 128 != 0) {
-    int i = summary.size() / 128;
-    summary.resize(128 * (i + 1));
-  }
 
-  // KeyEncrypt
-  char* sig = static_cast<char*>(malloc(RSA_size(public_key)));
-  if (!sig) {
-    print<GeneralFerrorCtrl>(std::cerr,
-                             "Cannot allocate memories for signature.");
+  //
+  unsigned char buffer[4096];
+  unsigned int sig_size = 0;
+  memset(buffer, 0, sizeof(char) * 4096);
+  if (RSA_sign(kSignHashAlgorithm,
+               reinterpret_cast<const unsigned char*>(summary.data()),
+               summary.size(), buffer, &sig_size, private_key) == 1) {
+    QByteArray signature(reinterpret_cast<char*>(buffer), sig_size);
+    return signature;
+  } else
     return QByteArray();
-  }
-
-  int sig_length = sig_details::public_encrypt(
-      summary.size() + 1, reinterpret_cast<unsigned char*>(summary.data()),
-      reinterpret_cast<unsigned char*>(sig), public_key,
-      RSA_PKCS1_OAEP_PADDING);
-  if (sig_length == -1) {
-    print<GeneralFerrorCtrl>(std::cerr, "Error occurred in encrypt().");
-    free(sig);
-    return QByteArray();
-  }
-
-  QByteArray data(sig, sig_length);
-  free(sig);
-  return data;
 }
 
 bool verify(const QByteArray& hval, QByteArray& sig,
             const QFileInfo& kfile) noexcept {
-  //
-  FILE* priio = NULL;
-  priio = fopen(kfile.filePath().toStdString().c_str(), "rb");
-  RSA* prikey = PEM_read_RSAPrivateKey(priio, NULL, NULL, NULL);  //
-  fclose(priio);
+  FILE* pubio = NULL;
+  RSA* pubkey = RSA_new();
+  pubio = fopen(kfile.filePath().toStdString().c_str(), "rb");
+  if ((PEM_read_RSAPublicKey(pubio, &pubkey, NULL, NULL)) == nullptr) {
+    fclose(pubio);
+    return false;
+  } else {
+    fclose(pubio);
+  }
 
-  char* plain = static_cast<char*>(malloc(sig.size() * sizeof(char)));  //
-  if (!plain) {
-    print<GeneralFerrorCtrl>(std::cerr,
-                             "Cannot allocate memories for plaintext.");
-
+  if (RSA_verify(kSignHashAlgorithm,
+                 reinterpret_cast<const unsigned char*>(hval.data()),
+                 hval.size(),
+                 reinterpret_cast<const unsigned char*>(sig.data()), sig.size(),
+                 pubkey) == 1) {
+    RSA_free(pubkey);
+    return true;
+  } else {
+    RSA_free(pubkey);
     return false;
   }
-  int plain_length = sig_details::private_decrypt(
-      sig.size(), reinterpret_cast<unsigned char*>(sig.data()),
-      reinterpret_cast<unsigned char*>(plain), prikey, RSA_PKCS1_OAEP_PADDING);
-  if (plain_length == -1) {
-    print<GeneralFerrorCtrl>(std::cerr, "Error occurred in decrypt().");
-    free(plain);
-    return false;
-  }
-
-  QByteArray val = hval;
-  if (val.size() % 128 != 0) {
-    int i = val.size() / 128;
-    val.resize(128 * (i + 1));
-  }
-
-  // Do a quick comparsion.
-  if (plain_length - 1 != val.size()) {
-    free(plain);
-    return false;
-  }
-  for (int i = 0; i < plain_length - 1; ++i)
-    if (plain[i] != val[i]) {
-      free(plain);
-      return false;
-    }
-
-  free(plain);
-  return true;
 }
 
 }  // namespace otalib
