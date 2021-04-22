@@ -73,47 +73,52 @@ void generateKeyPair() {
 }
 
 QByteArray sign(QFile* file, RSA* private_key) {
-  if (!file->isOpen()) return {QByteArray(), -1};
+  if (!file->isOpen()) return QByteArray();
 
   // Get the hash value of file.
   QCryptographicHash hash(kHashAlgorithm);
   hash.addData(file);
   QByteArray summary = hash.result();
 
-  //
   unsigned char buffer[4096];
-  unsigned int sig_size = 0;
   memset(buffer, 0, sizeof(char) * 4096);
+  unsigned int sig_size = 0;
   if (RSA_sign(kSignHashAlgorithm,
                reinterpret_cast<const unsigned char*>(summary.data()),
                summary.size(), buffer, &sig_size, private_key) == 1) {
-    QByteArray signature(reinterpret_cast<char*>(buffer), sig_size);
-    return signature;
-  } else
+    return QByteArray(reinterpret_cast<char*>(buffer), sig_size);
+  } else {
     return QByteArray();
+  }
 }
 
 bool verify(const QByteArray& hval, QByteArray& sig,
             const QFileInfo& kfile) noexcept {
   FILE* pubio = NULL;
   RSA* pubkey = RSA_new();
-  pubio = fopen(kfile.filePath().toStdString().c_str(), "rb");
+  pubio = fopen(kfile.absoluteFilePath().toStdString().c_str(), "rb");
   if ((PEM_read_RSAPublicKey(pubio, &pubkey, NULL, NULL)) == nullptr) {
     fclose(pubio);
     return false;
   } else {
     fclose(pubio);
   }
+  ERR_print_errors_fp(stderr);
 
   if (RSA_verify(kSignHashAlgorithm,
                  reinterpret_cast<const unsigned char*>(hval.data()),
                  hval.size(),
                  reinterpret_cast<const unsigned char*>(sig.data()), sig.size(),
                  pubkey) == 1) {
+    ERR_print_errors_fp(stderr);
     RSA_free(pubkey);
     return true;
   } else {
     RSA_free(pubkey);
+    ERR_print_errors_fp(stderr);
+    //    FILE* file = fopen("verify.sig", "wb");
+    //    fwrite(sig.data(), sizeof(char), sig.size(), file);
+    //    fclose(file);
     return false;
   }
 }

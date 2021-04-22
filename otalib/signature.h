@@ -41,13 +41,12 @@
 
 namespace otalib {
 
-constexpr int32_t kKeyLength = 2048;
+constexpr int32_t kKeyLength = 1024;
 constexpr int32_t kPublicExponent = 59;
 constexpr int32_t kPublicKeyPem = 1;
 constexpr int32_t kPrivateKeyPem = 0;
 constexpr auto kHashAlgorithm = QCryptographicHash::Md5;
-constexpr int kSignHashAlgorithm = NID_sha256;
-
+constexpr int kSignHashAlgorithm = NID_sha1;
 void generateKeyPair();
 
 // Requrie the file has already opened.

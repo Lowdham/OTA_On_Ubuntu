@@ -4,7 +4,7 @@
 
 using namespace otalib;
 bool testfunc() {
-  // generateKeyPair();
+   generateKeyPair();
 
   QFile file("test.html");
   if (file.open(QFile::ReadOnly)) {
@@ -14,7 +14,7 @@ bool testfunc() {
           std::cerr, "Error occured in openning \"private_key\" file.");
       return false;
     }
-    
+
     RSA* private_key = RSA_new();
     if (PEM_read_RSAPrivateKey(priio, &private_key, NULL, NULL) == nullptr) {
       fclose(priio);
