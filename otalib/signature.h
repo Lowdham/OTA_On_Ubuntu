@@ -63,13 +63,14 @@ QByteArray sign(QFile* file, RSA* private_key);
 bool verify(const QByteArray& hval, QByteArray& sig,
             const QFileInfo& kfile) noexcept;
 
-void genKeyPairByCmd();
+// Generate the key under current directory.
+void genKey(const QString& prikey_file, const QString& pubkey_file);
 
 // Sign the target.
 bool sign(const QFileInfo& target, const QFileInfo& prikey);
 
 // Verify the signature
-bool verify(const QFileInfo& target, const QFileInfo& signature,
+bool verify(const QFileInfo& hash, const QFileInfo& signature,
             const QFileInfo& pubkey);
 
 }  // namespace otalib

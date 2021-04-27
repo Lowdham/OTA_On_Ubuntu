@@ -85,8 +85,9 @@ bool rsaSignThroughCmd(const QString& from, const QString& to,
                        const QString& prikey) {
   //
   static const ::std::string prefix = "openssl dgst -sign ";
-  ::std::string cmd = prefix + prikey.toStdString() + kSignHashAlgorithmCmd +
-                      "-out " + to.toStdString() + " " + from.toStdString();
+  ::std::string cmd = prefix + prikey.toStdString() + " " +
+                      kSignHashAlgorithmCmd + "-out " + to.toStdString() + " " +
+                      from.toStdString();
   system(cmd.c_str());
   return true;
 }
@@ -95,9 +96,9 @@ bool rsaVerifyThroughCmd(const QString& sig, const QString& hash,
                          const QString& pubkey) {
   //
   static const ::std::string prefix = "openssl dgst -verify ";
-  ::std::string cmd = prefix + pubkey.toStdString() + kSignHashAlgorithmCmd +
-                      "-signature " + sig.toStdString() + " " +
-                      hash.toStdString();
+  ::std::string cmd = prefix + pubkey.toStdString() + " " +
+                      kSignHashAlgorithmCmd + "-signature " +
+                      sig.toStdString() + " " + hash.toStdString();
   ::std::string ret = getCmdResult(cmd);
   if (ret == "Verified OK")
     return true;
@@ -195,7 +196,17 @@ bool verify(const QByteArray& hval, QByteArray& sig,
   }
 }
 
-void genKeyPairByCmd() {}
+void genKey(const QString& prikey_file, const QString& pubkey_file) {
+  // Generate rsa keys in current directory.
+  // "cmd": openssl genrsa -out prikey_file kKeyLength
+  ::std::string cmd = "openssl genrsa -out " + prikey_file.toStdString() + " " +
+                      ::std::to_string(kKeyLength);
+  system(cmd.c_str());
+  cmd.clear();
+  // openssl rsa -pubout -in prikey_file -out pubkey_file
+  cmd = "openssl rsa -pubout -in " + prikey_file.toStdString() + " -out " +
+        pubkey_file.toStdString();
+}
 
 bool sign(const QFileInfo& target, const QFileInfo& prikey) {
   // Get the hash value of target, and then generate the signature.
@@ -231,11 +242,8 @@ bool sign(const QFileInfo& target, const QFileInfo& prikey) {
 bool verify(const QFileInfo& hash, const QFileInfo& signature,
             const QFileInfo& pubkey) {
   //
-  QString hfilepath = hash.absolutePath();
-  QDir dir = hash.absoluteDir();
-  QString sfilepath = dir.filePath(QStringLiteral("hash"));
-  QString pfilepath = dir.filePath(QStringLiteral("sig"));
-  return sig_details::rsaVerifyThroughCmd(sfilepath, hfilepath, pfilepath);
+  return sig_details::rsaVerifyThroughCmd(
+      signature.absolutePath(), hash.absolutePath(), pubkey.absolutePath());
 }
 
 }  // namespace otalib
