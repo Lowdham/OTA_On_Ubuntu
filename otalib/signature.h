@@ -33,11 +33,16 @@
 
 #include <QByteArray>
 #include <QCryptographicHash>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <iostream>
 
+#include <stdio.h>
 #include "logger/logger.h"
+#if defined(_WIN64) || defined(_WIN32)
+#include <Windows.h>
+#endif  // !defined(_WIN64) && !defined(_WIN32)
 
 namespace otalib {
 
@@ -47,6 +52,7 @@ constexpr int32_t kPublicKeyPem = 1;
 constexpr int32_t kPrivateKeyPem = 0;
 constexpr auto kHashAlgorithm = QCryptographicHash::Md5;
 constexpr int kSignHashAlgorithm = NID_sha1;
+static const ::std::string kSignHashAlgorithmCmd = "-sha256 ";
 void generateKeyPair();
 
 // Requrie the file has already opened.
@@ -56,6 +62,15 @@ QByteArray sign(QFile* file, RSA* private_key);
 //
 bool verify(const QByteArray& hval, QByteArray& sig,
             const QFileInfo& kfile) noexcept;
+
+void genKeyPairByCmd();
+
+// Sign the target.
+bool sign(const QFileInfo& target, const QFileInfo& prikey);
+
+// Verify the signature
+bool verify(const QFileInfo& target, const QFileInfo& signature,
+            const QFileInfo& pubkey);
 
 }  // namespace otalib
 
