@@ -1,34 +1,8 @@
 #include "signature.h"
 
+#include <unistd.h>
 namespace otalib {
 namespace sig_details {
-
-// Create_RSA function creates public key and private key file
-RSA* create_RSA(RSA* keypair, int pem_type, const char* file_name) {
-  RSA* rsa = NULL;
-  FILE* fp = NULL;
-
-  if (pem_type == kPublicKeyPem) {
-    fp = fopen(file_name, "w");
-    PEM_write_RSAPublicKey(fp, keypair);
-    fclose(fp);
-
-    fp = fopen(file_name, "rb");
-    PEM_read_RSAPublicKey(fp, &rsa, NULL, NULL);
-    fclose(fp);
-
-  } else if (pem_type == kPrivateKeyPem) {
-    fp = fopen(file_name, "w");
-    PEM_write_RSAPrivateKey(fp, keypair, NULL, NULL, 0, NULL, NULL);
-    fclose(fp);
-
-    fp = fopen(file_name, "rb");
-    PEM_read_RSAPrivateKey(fp, &rsa, NULL, NULL);
-    fclose(fp);
-  }
-
-  return rsa;
-}
 
 ::std::string getCmdResult(const ::std::string& cmd) {
 #ifdef __linux__
@@ -45,7 +19,7 @@ RSA* create_RSA(RSA* keypair, int pem_type, const char* file_name) {
   uint32_t size = ret.size();
   if (size > 0 && ret[size - 1] == '\n') ret = ret.substr(0, size - 1);
   return ret;
-#endif  // !__linuex__
+#endif  // !__linux__
 #if defined(_WIN64) || defined(_WIN32)
   if (cmd.empty()) return ::std::string();
 
@@ -107,110 +81,23 @@ bool rsaVerifyThroughCmd(const QString& sig, const QString& hash,
 }
 
 }  // namespace sig_details
-
-void generateKeyPair() {
-  RSA* private_key = NULL;
-  RSA* public_key = NULL;
-  RSA* keypair = NULL;
-  BIGNUM* bne = NULL;
-  int ret = 0;
-
-  char private_key_pem[12] = "private_key";
-  char public_key_pem[11] = "public_key";
-  bne = BN_new();
-  ret = BN_set_word(bne, kPublicExponent);
-  if (ret != 1) {
-    print<GeneralFerrorCtrl>(std::cerr,
-                             "An error occurred in BN_set_word() method");
-    free(bne);
-    return;
-  }
-  keypair = RSA_new();
-  ret = RSA_generate_key_ex(keypair, kKeyLength, bne, NULL);
-  if (ret != 1) {
-    print<GeneralFerrorCtrl>(
-        std::cerr, "An error occurred in RSA_generate_key_ex() method");
-    free(bne);
-    free(keypair);
-    return;
-  }
-  private_key =
-      sig_details::create_RSA(keypair, kPrivateKeyPem, private_key_pem);
-  print<GeneralSuccessCtrl>(std::cout,
-                            "Private key pem file has been created.");
-
-  public_key = sig_details::create_RSA(keypair, kPublicKeyPem, public_key_pem);
-  print<GeneralSuccessCtrl>(std::cout, "Public key pem file has been created.");
-
-  free(private_key);
-  free(public_key);
-  free(keypair);
-  free(bne);
-}
-
-QByteArray sign(QFile* file, RSA* private_key) {
-  if (!file->isOpen()) return QByteArray();
-
-  // Get the hash value of file.
-  QCryptographicHash hash(kHashAlgorithm);
-  hash.addData(file);
-  QByteArray summary = hash.result();
-
-  unsigned char buffer[4096];
-  memset(buffer, 0, sizeof(char) * 4096);
-  unsigned int sig_size = 0;
-  if (RSA_sign(kSignHashAlgorithm,
-               reinterpret_cast<const unsigned char*>(summary.data()),
-               summary.size(), buffer, &sig_size, private_key) == 1) {
-    return QByteArray(reinterpret_cast<char*>(buffer), sig_size);
-  } else {
-    return QByteArray();
-  }
-}
-
-bool verify(const QByteArray& hval, QByteArray& sig,
-            const QFileInfo& kfile) noexcept {
-  FILE* pubio = NULL;
-  RSA* pubkey = RSA_new();
-  pubio = fopen(kfile.absoluteFilePath().toStdString().c_str(), "rb");
-  if ((PEM_read_RSAPublicKey(pubio, &pubkey, NULL, NULL)) == nullptr) {
-    fclose(pubio);
-    return false;
-  } else {
-    fclose(pubio);
-  }
-  ERR_print_errors_fp(stderr);
-
-  if (RSA_verify(kSignHashAlgorithm,
-                 reinterpret_cast<const unsigned char*>(hval.data()),
-                 hval.size(),
-                 reinterpret_cast<const unsigned char*>(sig.data()), sig.size(),
-                 pubkey) == 1) {
-    ERR_print_errors_fp(stderr);
-    RSA_free(pubkey);
-    return true;
-  } else {
-    RSA_free(pubkey);
-    ERR_print_errors_fp(stderr);
-    return false;
-  }
-}
-
 void genKey(const QString& prikey_file, const QString& pubkey_file) {
   // Generate rsa keys in current directory.
   // "cmd": openssl genrsa -out prikey_file kKeyLength
   ::std::string cmd = "openssl genrsa -out " + prikey_file.toStdString() + " " +
-                      ::std::to_string(kKeyLength);
+                      ::std::to_string(kKeyLength) + " > /dev/null 2>&1";
   system(cmd.c_str());
   cmd.clear();
+
   // openssl rsa -pubout -in prikey_file -out pubkey_file
   cmd = "openssl rsa -pubout -in " + prikey_file.toStdString() + " -out " +
-        pubkey_file.toStdString();
+        pubkey_file.toStdString() + " > /dev/null 2>&1";
+  system(cmd.c_str());
 }
 
 bool sign(const QFileInfo& target, const QFileInfo& prikey) {
   // Get the hash value of target, and then generate the signature.
-  QFile tfile(target.absolutePath());
+  QFile tfile(target.absoluteFilePath());
   QString hfilepath = target.absoluteDir().filePath(QStringLiteral("hash"));
   QFile hfile(hfilepath);
   QString dfilepath = target.absoluteDir().filePath(QStringLiteral("sig"));
@@ -229,7 +116,7 @@ bool sign(const QFileInfo& target, const QFileInfo& prikey) {
       hfile.close();
       // do signature through cmd.
       return sig_details::rsaSignThroughCmd(hfilepath, dfilepath,
-                                            prikey.absolutePath());
+                                            prikey.absoluteFilePath());
     } else {
       return false;
     }
@@ -242,8 +129,9 @@ bool sign(const QFileInfo& target, const QFileInfo& prikey) {
 bool verify(const QFileInfo& hash, const QFileInfo& signature,
             const QFileInfo& pubkey) {
   //
-  return sig_details::rsaVerifyThroughCmd(
-      signature.absolutePath(), hash.absolutePath(), pubkey.absolutePath());
+  return sig_details::rsaVerifyThroughCmd(signature.absoluteFilePath(),
+                                          hash.absoluteFilePath(),
+                                          pubkey.absoluteFilePath());
 }
 
 }  // namespace otalib
