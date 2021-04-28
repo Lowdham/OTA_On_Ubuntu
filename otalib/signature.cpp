@@ -1,6 +1,5 @@
 #include "signature.h"
 
-#include <unistd.h>
 namespace otalib {
 namespace sig_details {
 

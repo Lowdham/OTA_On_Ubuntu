@@ -27,15 +27,6 @@ constexpr int32_t kPrivateKeyPem = 0;
 constexpr auto kHashAlgorithm = QCryptographicHash::Md5;
 constexpr int kSignHashAlgorithm = NID_sha1;
 static const ::std::string kSignHashAlgorithmCmd = "-sha256 ";
-void generateKeyPair();
-
-// Requrie the file has already opened.
-// Return the signature of file after RSA encrpyting.
-QByteArray sign(QFile* file, RSA* private_key);
-
-//
-bool verify(const QByteArray& hval, QByteArray& sig,
-            const QFileInfo& kfile) noexcept;
 
 // Generate the key under current directory.
 void genKey(const QString& prikey_file, const QString& pubkey_file);
