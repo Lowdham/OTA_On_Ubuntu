@@ -116,6 +116,10 @@ struct Version : VcmControl<vcm> {
                                  static_cast<const DerivedClass&>(rhs)) != 0;
   }
 
+  inline decltype(auto) toString() const {
+    return static_cast<const DerivedClass*>(this)->toString();
+  }
+
   struct hasher {
     inline size_t operator()(const DerivedClass& key) const {
       ::std::string source(reinterpret_cast<const char*>(&key),
