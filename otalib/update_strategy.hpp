@@ -14,7 +14,7 @@
 
 #include "logger/logger.h"
 #include "utils.hpp"
-#include "version.hpp"
+#include "vcm.hpp"
 
 namespace otalib {
 
@@ -356,7 +356,8 @@ bool checkCondition(const ConditionBlock<VersionType>& cond,
 
 template <typename VersionType>
 ::std::optional<CheckInfo<VersionType>> applyStrategy(
-    const QJsonObject& strategy, const ClientInfo<VersionType>& cinfo) {
+    const QJsonObject& strategy, const ClientInfo<VersionType>& cinfo,
+    const VersionMap<VersionType>& vcm) {
   auto checkVaildity = [](const auto& block) {
     if (block.stg == StrategyType::error)
       return false;
@@ -364,7 +365,15 @@ template <typename VersionType>
       return true;
   };
 
-  // Check update strategy first.
+  // Check whether the responce is always the newest version.
+  if (strategy.contains("newest") && strategy.value("newest").isString() &&
+      strategy.value("newest").toBool(false)) {
+    // Always return the "newest".
+    return CheckInfo<VersionType>{StrategyAction::update,
+                                  StrategyType::optional, vcm.newest()};
+  }
+
+  // Check update strategy.
   if (strategy.contains("update") && strategy.value("update").isArray()) {
     auto update_list = strategy.value("update").toArray();
     for (auto iter : update_list) {
@@ -407,7 +416,7 @@ template <typename VersionType>
 
 template <typename VersionType>
 ::std::optional<CheckInfo<VersionType>> matchStrategy(
-    const ClientInfo<VersionType>& cinfo) {
+    const ClientInfo<VersionType>& cinfo, const VersionMap<VersionType>& vcm) {
   //
   const QJsonArray& strategy = getServerStrategy();
   for (auto iter : strategy) {
@@ -415,7 +424,8 @@ template <typename VersionType>
       QJsonObject current = iter.toObject();
       if (current.contains("name") && current.value("name").isString() &&
           current.value("name").toString() == cinfo.name) {
-        return applyStrategy<VersionType>(current, cinfo);  // Match succeed.
+        return applyStrategy<VersionType>(current, cinfo,
+                                          vcm);  // Match succeed.
       } else
         continue;  // Match failed.
     } else {
@@ -434,13 +444,14 @@ template <typename VersionType>
 // 3: Return the target pack directory according to the strategy.
 template <typename VersionType>
 ::std::optional<CheckInfo<VersionType>> updateStrategyCheck(
-    const QByteArray& raw) {
+    const QByteArray& raw, const VersionMap<VersionType>& vcm) {
   //
   QJsonParseError err;
   QJsonDocument doc = QJsonDocument::fromJson(raw, &err);
   if (err.error == QJsonParseError::NoError && doc.isObject()) {
     //
-    return matchStrategy<VersionType>(getClientInfo<VersionType>(doc.object()));
+    return matchStrategy<VersionType>(getClientInfo<VersionType>(doc.object()),
+                                      vcm);
   } else {
     // Error
     return ::std::nullopt;

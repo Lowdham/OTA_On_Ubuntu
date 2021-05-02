@@ -1,12 +1,13 @@
 #ifndef VERSIONCONTROLMAP_HPP
 #define VERSIONCONTROLMAP_HPP
 
-#include <string.h>
-
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <queue>
+#include <string>
 #include <unordered_map>
 
 #include "version.hpp"
@@ -31,11 +32,13 @@ class VersionMap {
   using Storage = ::std::vector<VersionType>;
   using Callback = bool(const VersionType&, const VersionType&);
 
-  Lookup lp;
-  Storage stor;
+  Lookup lp_;
+  Storage stor_;
+  ::std::atomic_bool appending_ = false;
+  ::std::mutex lock_;
 
   // Callback called when new node appends.
-  ::std::function<Callback> callback_on_ac;
+  ::std::function<Callback> callback_on_ac_;
 
   // VersionMap attribute.
   static constexpr uint8_t vcm_max_level = VersionType::vcm_max_level;
@@ -57,33 +60,39 @@ class VersionMap {
 
  public:
   VersionMap()
-      : lp(VersionType::vcm_capacity, typename VersionType::hasher()),
-        stor(),
-        callback_on_ac() {}
+      : lp_(VersionType::vcm_capacity, typename VersionType::hasher()),
+        stor_(),
+        lock_(),
+        callback_on_ac_() {}
 
   template <typename Function>
   void setCallback(Function&& f) noexcept {
     static_assert(::std::is_same_v<Function, Callback>,
                   "Type of function doesn't match the callback.");
-    callback_on_ac = std::forward<Function>(f);
+    callback_on_ac_ = std::forward<Function>(f);
   }
 
   bool append(const VersionType& glver, bool onInitConstruct = false) {
     // Safe check.
-    if (!stor.empty() && glver <= stor.back()) return false;
+    if (!stor_.empty() && glver <= stor_.back()) return false;
 
     // Capacity check.
-    if (stor.size() == vcm_capacity) return false;
+    if (stor_.size() == vcm_capacity) return false;
 
     // Build a index.
-    VerIndex index = stor.size();
-    lp.insert_or_assign(glver, index);
+    {
+      ::std::lock_guard locker(lock_);
+      appending_.store(true);
+      VerIndex index = stor_.size();
+      lp_.insert_or_assign(glver, index);
 
-    // Append to stor;
-    stor.push_back(glver);
+      // Append to stor, and block the newest() at the same time.
+      stor_.push_back(glver);
 
-    // Call the callback if it's not on initial construction.
-    if (!onInitConstruct) NodeConstruct(index);
+      // Call the callback if it's not on initial construction.
+      if (!onInitConstruct) NodeConstruct(index);
+      appending_.store(false);
+    }
     return true;
   }
 
@@ -92,19 +101,30 @@ class VersionMap {
   std::vector<EdgeType> search(const VersionType& start,
                                const VersionType& end) const noexcept {
     std::vector<EdgeType> route_path;
-    if (lp.count(start) == 0 || lp.count(end) == 0) return route_path;
+    if (lp_.count(start) == 0 || lp_.count(end) == 0) return route_path;
     if (start == end) return route_path;
 
-    VerIndex startIndex = lp.at(start);
-    VerIndex goalIndex = lp.at(end);
+    VerIndex startIndex = lp_.at(start);
+    VerIndex goalIndex = lp_.at(end);
 
     std::vector<VerIndex> vs;
-    CalculateUnit<stg> unit(stor.size() + 10,
-                            this);  // The extra "10" is as a buffer.
+    CalculateUnit<stg> unit(stor_.size() + 10,  // buffer size
+                            this);
     unit.dfs(vs, route_path, startIndex, 1, goalIndex);
 
     return route_path;
   }
+
+  VersionType newest() const noexcept {
+    if (appending_) {
+      // Block current thread if the delta pack hasn't generated yet.
+      ::std::lock_guard locker(lock_);
+      return stor_.back();
+    } else
+      return stor_.back();
+  }
+
+  VersionType oldest() const noexcept { return stor_.front(); }
 
  private:
   template <SearchStrategy stg = SearchStrategy::vUpdate>
@@ -181,7 +201,7 @@ class VersionMap {
 
  private:
   inline constexpr bool checkVerIndex(VerIndex index) const noexcept {
-    return index >= 0 && index < static_cast<VerIndex>(stor.size());
+    return index >= 0 && index < static_cast<VerIndex>(stor_.size());
   }
 
   // Select an appropriate level from the current index difference
@@ -227,7 +247,7 @@ class VersionMap {
       VerIndex prev = index - distance;
       if (prev < 0) continue;
 
-      callback_on_ac(stor[prev], stor[index]);
+      callback_on_ac(stor_[prev], stor_[index]);
     }
   }
 };
