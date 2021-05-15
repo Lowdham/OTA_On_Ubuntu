@@ -19,18 +19,19 @@ namespace otalib {
 #define OTALIB_DISABLE_IF_T(...) \
   typename ::std::enable_if<!bool(__VA_ARGS__)>::type* = nullptr
 
-#define OTALIB_VARIANT_CONSTRUCTOR(Classname, StorageType, XType, xval) \
+#define OTALIB_VARIANT_CONSTRUCTOR(Classname, Storage, XType, xval)     \
   template <typename XType,                                             \
             OTALIB_ENABLE_IF_T(                                         \
-                ::std::is_constructible_v<StorageType, XType&&>)>       \
+                ::std::is_constructible_v<decltype(Storage), XType&&>)> \
   Classname(XType&& xval) noexcept(                                     \
-      ::std::is_nothrow_constructible_v<StorageType, XType&&>)
+      ::std::is_nothrow_constructible_v<decltype(Storage), XType&&>)
 
-#define OTALIB_VARIANT_ASSIGNMENT(Classname, StorageType, XType, xval)         \
-  template <typename XType,                                                    \
-            OTALIB_ENABLE_IF_T(::std::is_assignable_v<StorageType&, XType&&>)> \
-  Classname& operator=(XType&& xval) noexcept(                                 \
-      ::std::is_nothrow_assignable_v<StorageType&, XType&&>)
+#define OTALIB_VARIANT_ASSIGNMENT(Classname, Storage, XType, xval)    \
+  template <typename XType,                                           \
+            OTALIB_ENABLE_IF_T(                                       \
+                ::std::is_assignable_v<decltype(Storage)&, XType&&>)> \
+  Classname& operator=(XType&& xval) noexcept(                        \
+      ::std::is_nothrow_assignable_v<decltype(Storage)&, XType&&>)
 
 class SpinLock : private QAtomicInt {
  public:
