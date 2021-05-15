@@ -21,11 +21,7 @@
 namespace otalib {
 
 constexpr int32_t kKeyLength = 1024;
-constexpr int32_t kPublicExponent = 59;
-constexpr int32_t kPublicKeyPem = 1;
-constexpr int32_t kPrivateKeyPem = 0;
 constexpr auto kHashAlgorithm = QCryptographicHash::Md5;
-constexpr int kSignHashAlgorithm = NID_sha1;
 static const ::std::string kSignHashAlgorithmCmd = "-sha256 ";
 
 // Generate the key under current directory.
