@@ -16,6 +16,7 @@
 #include "delta_log.h"
 #include "logger/logger.h"
 #include "otaerr.hpp"
+#include "shell_cmd.hpp"
 
 namespace otalib::bs {
 
@@ -29,7 +30,7 @@ bool generateDeltaPack(QDir& oldfile, QDir& newfile, QDir& rollback_dest,
                        QDir& update_dest);
 
 // Apply the delta pack to update/rollback app.
-bool applyDeltaPack(QDir& pack, QDir& target);
+bool applyDeltaPack(const QDir& pack, const QDir& target);
 
 }  // namespace otalib::bs
 

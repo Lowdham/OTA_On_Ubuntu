@@ -14,9 +14,7 @@
 #include <iostream>
 
 #include "logger/logger.h"
-#if defined(_WIN64) || defined(_WIN32)
-#include <Windows.h>
-#endif  // !defined(_WIN64) && !defined(_WIN32)
+#include "shell_cmd.hpp"
 
 namespace otalib {
 
@@ -28,11 +26,11 @@ static const ::std::string kSignHashAlgorithmCmd = "-sha256 ";
 void genKey(const QString& prikey_file, const QString& pubkey_file);
 
 // Sign the target.
-bool sign(const QFileInfo& target, const QFileInfo& prikey);
+bool sign(const QFileInfo& target, const QFileInfo& prikey) noexcept;
 
 // Verify the signature
 bool verify(const QFileInfo& hash, const QFileInfo& signature,
-            const QFileInfo& pubkey);
+            const QFileInfo& pubkey) noexcept;
 
 }  // namespace otalib
 

@@ -13,22 +13,6 @@ static int plainWrite(bsdiff_stream* stream, const void* buffer, int size) {
     return -1;
 }
 
-void copyDir(const QString& source, const QString& dest) {
-#if defined(_WIN64) || defined(_WIN32)
-  QString s = "\"" + source + "\"";
-  QString d = "\"" + dest + "\"";
-  QString cmd("xcopy " + s + " " + d + " /S");
-  system(cmd.toStdString().c_str());
-  return;
-#endif
-
-#ifdef __linux__
-  QString cmd("cp -r " + source + "/* " + dest);
-  system(cmd.toStdString().c_str());
-  return;
-#endif
-}
-
 void copyDir(const QDir& source, const QDir& dest) {
   copyDir(source.path(), dest.path());
   return;
@@ -655,7 +639,7 @@ bool doApply(const QDir& pack, const QDir& target, QTextStream& log,
 
 }  // namespace
 
-bool applyDeltaPack(QDir& pack, QDir& target) {
+bool applyDeltaPack(const QDir& pack, const QDir& target) {
   if constexpr (bs_debug_mode)
     print<GeneralDebugCtrl>(std::cout, "[applyDeltaPack]");
 
