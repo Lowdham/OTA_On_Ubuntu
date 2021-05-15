@@ -43,6 +43,21 @@ class OTAError : public ::std::exception {
     QString extra_;
   };
 
+  struct S_apply_pack_unexpected_fail {
+    QString packname_;
+    QString extra_;
+  };
+
+  struct S_file_delete_fail {
+    QString filename_;
+    QString extra_;
+  };
+
+  struct S_file_write_fail {
+    QString filename_;
+    QString extra_;
+  };
+
   enum Index : uint8_t {
     index_success = 0,
     index_file_open_fail = 1,
@@ -50,24 +65,29 @@ class OTAError : public ::std::exception {
     index_deltalog_invalid_line = 3,
     index_deltafile_generate_fail = 4,
     index_general = 5,
+    index_apply_pack_unexpected_fail = 6,
+    index_file_delete_fail = 7,
+    index_file_write_fail = 8,
   };
 
  private:
-  using StorageType = ::std::variant<::std::monostate,            // 0
-                                     S_file_open_fail,            // 1
-                                     S_file_copy_fail,            // 2
-                                     S_delta_log_invalid_line,    // 3
-                                     S_delta_file_generate_fail,  // 5
-                                     S_general                    // 6
+  using StorageType = ::std::variant<::std::monostate,              // 0
+                                     S_file_open_fail,              // 1
+                                     S_file_copy_fail,              // 2
+                                     S_delta_log_invalid_line,      // 3
+                                     S_delta_file_generate_fail,    // 5
+                                     S_general,                     // 6
+                                     S_apply_pack_unexpected_fail,  // 7
+                                     S_file_delete_fail,            // 8
+                                     S_file_write_fail              // 9
                                      >;
   StorageType stor_;
-  QString msg_;
-  ::std::string buffer_;
+  ::std::string msg_;
   bool composed_;
 
  public:
   OTALIB_VARIANT_CONSTRUCTOR(OTAError, stor_, XErrT, xerror)
-      : stor_(::std::forward<XErrT>(xerror)), msg_(), composed_(false) {
+      : stor_(::std::forward<XErrT>(xerror)), composed_(false) {
     compose();
   }
 
@@ -86,42 +106,48 @@ class OTAError : public ::std::exception {
   void compose() {
     //
     composed_ = true;
+    QString msg;
     switch (this->index()) {
       case index_success: {
-        msg_ = "Success.";
+        msg = "Success.";
         break;
       }
       case index_file_open_fail: {
         const auto& altr = ::std::get<index_file_open_fail>(stor_);
-        msg_ = "File[" + altr.file_ + "] open failed.";
+        msg = "File[" + altr.file_ + "] open failed.";
         break;
       }
       case index_file_copy_fail: {
         const auto& altr = ::std::get<index_file_copy_fail>(stor_);
-        msg_ = "File copy faild.[" + altr.target_ + "]--->[" + altr.dest_ + "]";
+        msg = "File copy faild.[" + altr.target_ + "]--->[" + altr.dest_ + "]";
         break;
       }
       case index_deltalog_invalid_line: {
         const auto& altr = ::std::get<index_deltalog_invalid_line>(stor_);
-        msg_ = "Invalid line in delta log. line--[" + altr.line_ + "]";
+        msg = "Invalid line in delta log. line--[" + altr.line_ + "]";
         break;
       }
       case index_deltafile_generate_fail: {
         const auto& altr = ::std::get<index_deltafile_generate_fail>(stor_);
-        msg_ = "[" + altr.file_ + "]Delta file cannot generate." + altr.extra_;
+        msg = "[" + altr.file_ + "]Delta file cannot generate." + altr.extra_;
         break;
       }
       case index_general: {
         const auto& altr = ::std::get<index_general>(stor_);
-        msg_ = altr.extra_;
+        msg = altr.extra_;
+        break;
+      }
+      case index_apply_pack_unexpected_fail: {
+        const auto& altr = ::std::get<index_apply_pack_unexpected_fail>(stor_);
+        msg = "[" + altr.packname_ + "] cannot apply into app." + altr.extra_;
         break;
       }
     }
-    buffer_ = msg_.toStdString();
+    msg_ = msg.toStdString();
   }
 
  public:
-  const char* what() const noexcept override { return buffer_.c_str(); }
+  const char* what() const noexcept override { return msg_.c_str(); }
 };  // namespace otalib
 
 }  // namespace otalib
