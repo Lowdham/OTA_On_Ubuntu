@@ -30,7 +30,7 @@ class VersionMap {
   using Lookup =
       ::std::unordered_map<VersionType, VerIndex, typename VersionType::hasher>;
   using Storage = ::std::vector<VersionType>;
-  using Callback = bool(const VersionType&, const VersionType&);
+  using CallbackOnAc = bool(const VersionType&, const VersionType&);
 
   Lookup lp_;
   Storage stor_;
@@ -38,7 +38,7 @@ class VersionMap {
   ::std::mutex lock_;
 
   // Callback called when new node appends.
-  ::std::function<Callback> callback_on_ac_;
+  ::std::function<CallbackOnAc> callback_on_ac_;
 
   // VersionMap attribute.
   static constexpr uint8_t vcm_max_level = VersionType::vcm_max_level;
@@ -67,7 +67,7 @@ class VersionMap {
 
   template <typename Function>
   void setCallback(Function&& f) noexcept {
-    static_assert(::std::is_same_v<Function, Callback>,
+    static_assert(::std::is_same_v<Function, CallbackOnAc>,
                   "Type of function doesn't match the callback.");
     callback_on_ac_ = std::forward<Function>(f);
   }
@@ -97,9 +97,10 @@ class VersionMap {
   }
 
   // Thread-safe method for search the shortest path from "start" to "end".
+  // Copy-elision is guaranteed in c++17.
   template <SearchStrategy stg = SearchStrategy::vUpdate>
-  std::vector<EdgeType> search(const VersionType& start,
-                               const VersionType& end) const noexcept {
+  ::std::vector<EdgeType> search(const VersionType& start,
+                                 const VersionType& end) const noexcept {
     std::vector<EdgeType> route_path;
     if (lp_.count(start) == 0 || lp_.count(end) == 0) return route_path;
     if (start == end) return route_path;
@@ -217,8 +218,8 @@ class VersionMap {
   }
 
   // Get the distance of two index.
-  inline constexpr VerDist distanceOfVerIndex(VerIndex i,
-                                              VerIndex j) const noexcept {
+  inline constexpr VerDist distanceOfVerIndex(VerIndex i, VerIndex j) const
+      noexcept {
     return i < j ? j - i : i - j;
   }
 
@@ -233,8 +234,8 @@ class VersionMap {
   }
 
   // Check whether the node is on a certain level.
-  inline constexpr bool checkHit(LevelType level,
-                                 VerIndex index) const noexcept {
+  inline constexpr bool checkHit(LevelType level, VerIndex index) const
+      noexcept {
     return index % distanceOfLevel(level) == 0;
   }
 
