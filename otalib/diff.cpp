@@ -2,7 +2,7 @@
 namespace otalib::bs {
 namespace {
 
-constexpr bool bs_debug_mode = true;
+constexpr bool bs_debug_mode = false;
 
 static int plainWrite(bsdiff_stream* stream, const void* buffer, int size) {
   // Just write into the file.
@@ -36,7 +36,7 @@ void copyDir(const QDir& source, const QDir& dest) {
 
 /* Copy the "newfile" into "tdir" and log "add" in alog, "delete" in dlog. */
 bool doAddActionLog(QFile* newfile, const QDir& tdir, const QDir& nroot,
-                    QTextStream& alog, QTextStream& dlog) noexcept {
+                    QTextStream& alog, QTextStream& dlog) {
   QFileInfo file(*newfile);
   QString udest_file = tdir.filePath(file.fileName());
   QString position = nroot.relativeFilePath(file.absoluteFilePath());
@@ -51,24 +51,34 @@ bool doAddActionLog(QFile* newfile, const QDir& tdir, const QDir& nroot,
     print<GeneralDebugCtrl>(std::cout, "[Dest: " + tdir.absolutePath() + "]");
     print<GeneralDebugCtrl>(std::cout, "[Position: " + position + "]");
   }
-  if (QFile::copy(file.filePath(), udest_file)) {
+  QString target = file.filePath();
+  if (QFile::copy(target, udest_file)) {
     writeDeltaLog(alog, {Action::ADD, Category::FILE, position, QString()});
     print<GeneralSuccessCtrl>(std::cout, "Copy succeed.");
     return true;
   } else {  // Copy failed.
-    print<GeneralFerrorCtrl>(std::cerr, "Copy failed.");
-    return false;
+    OTAError::S_file_copy_fail xerror{
+        ::std::move(target), ::std::move(udest_file), STRING_SOURCE_LOCATION};
+    throw OTAError{::std::move(xerror)};
   }
 }
 
 /* Copy the "newdir" into "tdir" and log "add" in alog, "delete" in dlog. */
 bool doAddActionLog(QFileInfo* newdir, const QDir& tdir, const QDir& nroot,
-                    QTextStream& alog, QTextStream& dlog) noexcept {
+                    QTextStream& alog, QTextStream& dlog) {
   QDir dir(newdir->filePath());
   copyDir(dir, tdir);
   QString position = nroot.relativeFilePath(dir.absolutePath());
-  writeDeltaLog(alog, {Action::ADD, Category::DIR, position, QString()});
-  writeDeltaLog(dlog, {Action::DELETEACT, Category::DIR, position, QString()});
+  try {
+    writeDeltaLog(alog, {Action::ADD, Category::DIR, position, QString()});
+    writeDeltaLog(dlog,
+                  {Action::DELETEACT, Category::DIR, position, QString()});
+  } catch (::std::exception& e) {
+    print<GeneralFerrorCtrl>(::std::cerr, e.what());
+    OTAError::S_general xerror{QStringLiteral("Do \"Add\" action fails.")};
+    throw xerror;
+  }
+
   if constexpr (bs_debug_mode) {
     print<GeneralDebugCtrl>(std::cout, "[DoAddActionLog][Directory]");
     print<GeneralDebugCtrl>(std::cout,
@@ -82,7 +92,7 @@ bool doAddActionLog(QFileInfo* newdir, const QDir& tdir, const QDir& nroot,
 /* Apply the bsdiff algorithm to generate delta file and log. */
 bool doChangeActionLog(QByteArray& buffer_old, QByteArray& buffer_new,
                        QDir& dest, const QString& name_delta,
-                       const QString& pos, QTextStream& ulog) noexcept {
+                       const QString& pos, QTextStream& ulog) {
   // Generate the delta file to "dest" and log it in ulog.
   // Info in the log : [delta][filepath]
   QFile delta(dest.filePath(name_delta));
@@ -90,16 +100,20 @@ bool doChangeActionLog(QByteArray& buffer_old, QByteArray& buffer_new,
     bsdiff_stream stream = {&delta, malloc, free, &plainWrite};
 
     if (buffer_old.isEmpty()) {
-      print<GeneralFerrorCtrl>(
-          std::cerr,
-          "Delta file generate failed. Cannot read old file into buffer.");
-      return false;
+      OTAError::S_delta_file_generate_fail xerror{
+          pos,
+          QStringLiteral(
+              "Doing change action fails.Cannot read old file into buffer.") +
+              STRING_SOURCE_LOCATION};
+      throw OTAError{::std::move(xerror)};
     }
     if (buffer_new.isEmpty()) {
-      print<GeneralFerrorCtrl>(
-          std::cerr,
-          "Delta file generate failed. Cannot read new file into buffer.");
-      return false;
+      OTAError::S_delta_file_generate_fail xerror{
+          pos,
+          QStringLiteral(
+              "Doing change action fails.Cannot read new file into buffer.") +
+              STRING_SOURCE_LOCATION};
+      throw OTAError{::std::move(xerror)};
     }
 
     //
@@ -110,67 +124,64 @@ bool doChangeActionLog(QByteArray& buffer_old, QByteArray& buffer_new,
     delta.close();
     if (success) {
       // Additional info stores in opaque.
-      // opaque ::= _1/_2/_3
+      // opaque ::= _1/
       // _1 : The size of new file.
-      // _2 : The md5 value of old file.
-      // _3 : The md5 value of new file.
-      QCryptographicHash hash(QCryptographicHash::Md5);
-      hash.addData(buffer_old);
       ::std::string opaque = ::std::to_string(buffer_new.size());
-      opaque += "/" + hash.result().toStdString();
-      hash.reset();
-      hash.addData(buffer_new);
-      opaque += "/" + hash.result().toStdString();
       writeDeltaLog(ulog, {Action::DELTA, Category::FILE, pos,
                            QString::fromStdString(opaque)});
 
       return true;
     } else {  // bsdiff failed.
-      // writeDeltaLog(ulog, {Action::ERRORACT, Category::FILE, pos,
-      // "bsdiff-error"});
-      print<GeneralFerrorCtrl>(
-          std::cerr, "Delta file generate failed. Function bsdiff failed.");
-      return false;
+      OTAError::S_delta_file_generate_fail xerror{
+          pos, QStringLiteral(
+                   "Doing change action fails.Function \"bsdiff()\" failed.") +
+                   STRING_SOURCE_LOCATION};
+      throw OTAError{::std::move(xerror)};
     }
   } else {
-    // writeDeltaLog(ulog, {Action::ERRORACT, Category::FILE, pos,
-    // "file-open-error"});
-    print<GeneralFerrorCtrl>(
-        std::cerr,
-        "Delta file generate failed. Cannot create delta patch file.");
-    return false;
+    OTAError::S_delta_file_generate_fail xerror{
+        pos, QStringLiteral(
+                 "Doing change action fails.Cannot create delta patch file.") +
+                 STRING_SOURCE_LOCATION};
+    throw OTAError{::std::move(xerror)};
   }
 }
 
 bool generateDeltaFile(QFile* oldfile, QFile* newfile, QDir& udest, QDir& rdest,
                        const QDir& oroot, const QDir& nroot, QTextStream& ulog,
-                       QTextStream& rlog) noexcept {
-  if (!oldfile && !newfile) {
-    return true;
-  } else if (oldfile && !newfile) {
-    // Only oldfile exists, which will be removed in the new version.
-    // Info in the update log   : [delete][filepath]
-    // Info in the rollback log : [add][filepath]
-    return doAddActionLog(oldfile, rdest, oroot, rlog, ulog);
-  } else if (!oldfile && newfile) {
-    // Only newfile exists, which will be added in the new version.
-    // Info in the update log   : [add][filepath]
-    // Info in the rollback log : [delete][filepath]
-    return doAddActionLog(newfile, udest, nroot, ulog, rlog);
-  } else {
-    // File exists in both versions.
-    // Read both file and call to generate delta
-    QByteArray old_buffer = oldfile->readAll();
-    QByteArray new_buffer = newfile->readAll();
-    QFileInfo ofile(*oldfile);
-    QFileInfo nfile(*newfile);
-    QString opos = oroot.relativeFilePath(ofile.filePath());
-    QString upos = nroot.relativeFilePath(nfile.filePath());
-    bool update = doChangeActionLog(old_buffer, new_buffer, udest,
-                                    ofile.fileName() + ".r", upos, ulog);
-    bool rollback = doChangeActionLog(new_buffer, old_buffer, rdest,
-                                      nfile.fileName() + ".r", opos, rlog);
-    return (update && rollback);
+                       QTextStream& rlog) {
+  try {
+    if (!oldfile && !newfile) {
+      return true;
+    } else if (oldfile && !newfile) {
+      // Only oldfile exists, which will be removed in the new version.
+      // Info in the update log   : [delete][filepath]
+      // Info in the rollback log : [add][filepath]
+      return doAddActionLog(oldfile, rdest, oroot, rlog, ulog);
+    } else if (!oldfile && newfile) {
+      // Only newfile exists, which will be added in the new version.
+      // Info in the update log   : [add][filepath]
+      // Info in the rollback log : [delete][filepath]
+      return doAddActionLog(newfile, udest, nroot, ulog, rlog);
+    } else {
+      // File exists in both versions.
+      // Read both file and call to generate delta
+      QByteArray old_buffer = oldfile->readAll();
+      QByteArray new_buffer = newfile->readAll();
+      QFileInfo ofile(*oldfile);
+      QFileInfo nfile(*newfile);
+      QString opos = oroot.relativeFilePath(ofile.filePath());
+      QString upos = nroot.relativeFilePath(nfile.filePath());
+      bool update = doChangeActionLog(old_buffer, new_buffer, udest,
+                                      ofile.fileName() + ".r", upos, ulog);
+      bool rollback = doChangeActionLog(new_buffer, old_buffer, rdest,
+                                        nfile.fileName() + ".r", opos, rlog);
+      return (update && rollback);
+    }
+  } catch (::std::exception& e) {
+    //
+    print<GeneralFerrorCtrl>(::std::cerr, e.what());
+    OTAError::S_general xerror{QStringLiteral("") + STRING_SOURCE_LOCATION};
   }
 }
 
@@ -189,185 +200,192 @@ bool generateDeltaDir(QFileInfo* olddir, QFileInfo* newdir, QDir& udest,
     print<GeneralDebugCtrl>(std::cout,
                             "[RollbackPackDest][" + rdest.absolutePath() + "]");
   }
+  try {
+    // relativeFilePath
+    if (!olddir && !newdir)
+      return true;
+    else if (olddir && !newdir) {
+      // Only the old directory exists, which will be removed in the new
+      // version.
+      return doAddActionLog(olddir, rdest, oroot, rlog, ulog);
+    } else if (!olddir && newdir) {
+      // Only the new directory exists, which will be added in the new version.
+      return doAddActionLog(newdir, udest, nroot, ulog, rlog);
+    } else if (olddir && newdir) {
+      // Both dir exist. Compare two dir and generate delta file.
+      // Insert the whole list_new into a map.
+      // Traversal list_old and try finding new version info in the map, and
+      // generate the delta in the pack, then remove the iter in the map.
+      // Process the remaining files/dirs in the map and in the list_old.
+      /*---------------Dirs process---------------------*/
+      QDir dir_old(olddir->filePath());
+      QDir dir_new(newdir->filePath());
+      dir_old.setFilter(QDir::Dirs | QDir::NoDotAndDotDot);
+      dir_new.setFilter(QDir::Dirs | QDir::NoDotAndDotDot);
+      QFileInfoList list_old = dir_old.entryInfoList();
+      QFileInfoList list_new = dir_new.entryInfoList();
+      QMap<QString, QFileInfo> ndirs;
+      for (auto& info : list_new) ndirs.insert(info.fileName(), info);
 
-  // relativeFilePath
-  if (!olddir && !newdir)
-    return true;
-  else if (olddir && !newdir) {
-    // Only the old directory exists, which will be removed in the new version.
-    return doAddActionLog(olddir, rdest, oroot, rlog, ulog);
-  } else if (!olddir && newdir) {
-    // Only the new directory exists, which will be added in the new version.
-    return doAddActionLog(newdir, udest, nroot, ulog, rlog);
-  } else if (olddir && newdir) {
-    // Both dir exist. Compare two dir and generate delta file.
-    // Insert the whole list_new into a map.
-    // Traversal list_old and try finding new version info in the map, and
-    // generate the delta in the pack, then remove the iter in the map.
-    // Process the remaining files/dirs in the map and in the list_old.
-    /*---------------Dirs process---------------------*/
-    QDir dir_old(olddir->filePath());
-    QDir dir_new(newdir->filePath());
-    dir_old.setFilter(QDir::Dirs | QDir::NoDotAndDotDot);
-    dir_new.setFilter(QDir::Dirs | QDir::NoDotAndDotDot);
-    QFileInfoList list_old = dir_old.entryInfoList();
-    QFileInfoList list_new = dir_new.entryInfoList();
-    QMap<QString, QFileInfo> ndirs;
-    for (auto& info : list_new) ndirs.insert(info.fileName(), info);
-
-    // Traversal list_old
-    for (auto& oinfo : list_old) {
-      auto ninfo = ndirs.find(oinfo.fileName());
-      if (ninfo != ndirs.end()) {  // Dir in new version found.
-        // Get subpath title.
-        QString sp = ninfo.key();
+      // Traversal list_old
+      for (auto& oinfo : list_old) {
+        auto ninfo = ndirs.find(oinfo.fileName());
+        if (ninfo != ndirs.end()) {  // Dir in new version found.
+          // Get subpath title.
+          QString sp = ninfo.key();
+          if (!udest.exists(sp)) udest.mkdir(sp);
+          if (!rdest.exists(sp)) rdest.mkdir(sp);
+          QDir usp(udest);
+          QDir rsp(rdest);
+          usp.cd(sp);
+          rsp.cd(sp);
+          generateDeltaDir(&oinfo, &(*ninfo), usp, rsp, oroot, nroot, ulog,
+                           rlog);
+          ndirs.erase(ninfo);
+          continue;
+        } else {  // Dir not found, which means dir only exists in old version.
+          QString sp = oinfo.fileName();
+          if (!rdest.exists(sp)) rdest.mkdir(sp);
+          QDir rsp(rdest);
+          rsp.cd(sp);
+          // udest and nroot is not used.
+          generateDeltaDir(&oinfo, nullptr, udest, rsp, oroot, nroot, ulog,
+                           rlog);
+          continue;
+        }
+      }
+      // Process the remaining dir in the ndirs.
+      for (auto& ninfo : ndirs) {
+        QString sp = ninfo.fileName();
         if (!udest.exists(sp)) udest.mkdir(sp);
-        if (!rdest.exists(sp)) rdest.mkdir(sp);
         QDir usp(udest);
-        QDir rsp(rdest);
         usp.cd(sp);
-        rsp.cd(sp);
-        generateDeltaDir(&oinfo, &(*ninfo), usp, rsp, oroot, nroot, ulog, rlog);
-        ndirs.erase(ninfo);
-        continue;
-      } else {  // Dir not found, which means dir only exists in old version.
-        QString sp = oinfo.fileName();
-        if (!rdest.exists(sp)) rdest.mkdir(sp);
-        QDir rsp(rdest);
-        rsp.cd(sp);
-        // udest and nroot is not used.
-        generateDeltaDir(&oinfo, nullptr, udest, rsp, oroot, nroot, ulog, rlog);
-        continue;
+        // rdest and oroot is not used.
+        generateDeltaDir(nullptr, &ninfo, usp, rdest, oroot, nroot, ulog, rlog);
       }
-    }
-    // Process the remaining dir in the ndirs.
-    for (auto& ninfo : ndirs) {
-      QString sp = ninfo.fileName();
-      if (!udest.exists(sp)) udest.mkdir(sp);
-      QDir usp(udest);
-      usp.cd(sp);
-      // rdest and oroot is not used.
-      generateDeltaDir(nullptr, &ninfo, usp, rdest, oroot, nroot, ulog, rlog);
-    }
-    /*---------------Files process---------------------*/
-    dir_old.setFilter(QDir::Files);
-    dir_new.setFilter(QDir::Files);
-    list_old = dir_old.entryInfoList();
-    list_new = dir_new.entryInfoList();
+      /*---------------Files process---------------------*/
+      dir_old.setFilter(QDir::Files);
+      dir_new.setFilter(QDir::Files);
+      list_old = dir_old.entryInfoList();
+      list_new = dir_new.entryInfoList();
 
-    QMap<QString, QFileInfo> map;
-    for (auto& info : list_new) map.insert(info.fileName(), info);
+      QMap<QString, QFileInfo> map;
+      for (auto& info : list_new) map.insert(info.fileName(), info);
 
-    // Traversal list_old.
-    for (auto& oinfo : list_old) {
-      auto ninfo = map.find(oinfo.fileName());
-      if (ninfo != map.end()) {
-        // File in new version found.
-        QFile oldfile(oinfo.absoluteFilePath());
-        QFile newfile(ninfo->absoluteFilePath());
-        if (oldfile.open(QFile::Truncate | QFile::ReadOnly) &&
-            newfile.open(QFile::Truncate | QFile::ReadOnly)) {
-          generateDeltaFile(&oldfile, &newfile, udest, rdest, oroot, nroot,
-                            ulog, rlog);
+      // Traversal list_old.
+      for (auto& oinfo : list_old) {
+        auto ninfo = map.find(oinfo.fileName());
+        if (ninfo != map.end()) {
+          // File in new version found.
+          QString po = oinfo.absoluteFilePath();
+          QString pn = ninfo->absoluteFilePath();
+          QFile oldfile(po);
+          QFile newfile(pn);
+          if (oldfile.open(QFile::Truncate | QFile::ReadOnly) &&
+              newfile.open(QFile::Truncate | QFile::ReadOnly)) {
+            try {
+              generateDeltaFile(&oldfile, &newfile, udest, rdest, oroot, nroot,
+                                ulog, rlog);
+            } catch (::std::exception& e) {
+              newfile.close();
+              oldfile.close();
+              throw e;
+            }
+            newfile.close();
+            oldfile.close();
+            map.erase(ninfo);
+            continue;
+          } else {  // Open failed.
+            if (!oldfile.isOpen()) {
+              OTAError::S_file_open_fail xerror{::std::move(po),
+                                                STRING_SOURCE_LOCATION};
+              throw OTAError{::std::move(xerror)};
+            }
+            if (!newfile.isOpen()) {
+              OTAError::S_file_open_fail xerror{::std::move(pn),
+                                                STRING_SOURCE_LOCATION};
+              throw OTAError{::std::move(xerror)};
+            }
+          }
+        } else {  // File in new version not found.
+          QString p = oinfo.absoluteFilePath();
+          QFile oldfile(p);
+          if (oldfile.open(QFile::Truncate | QFile::ReadOnly)) {
+            try {
+              generateDeltaFile(&oldfile, nullptr, udest, rdest, oroot, nroot,
+                                ulog, rlog);
+            } catch (::std::exception& e) {
+              oldfile.close();
+              throw e;
+            }
+            oldfile.close();
+            continue;
+          } else {  // Open failed.
+            if (!oldfile.isOpen()) {
+              OTAError::S_file_open_fail xerror{::std::move(p),
+                                                STRING_SOURCE_LOCATION};
+              throw OTAError{::std::move(xerror)};
+            }
+          }
+        }
+      }
+
+      // Process the remaining new files.
+      for (auto& ninfo : map) {
+        QString p = ninfo.absoluteFilePath();
+        QFile newfile(p);
+        if (newfile.open(QFile::Truncate | QFile::ReadOnly)) {
+          try {
+            generateDeltaFile(nullptr, &newfile, udest, rdest, oroot, nroot,
+                              ulog, rlog);
+          } catch (::std::exception& e) {
+            newfile.close();
+            throw e;
+          }
+
           newfile.close();
-          oldfile.close();
-          map.erase(ninfo);
           continue;
         } else {  // Open failed.
-          if (!oldfile.isOpen())
-            print<GeneralErrorCtrl>(std::cerr, "Cannot open old file");
-          if (!newfile.isOpen())
-            print<GeneralErrorCtrl>(std::cerr, "Cannot open new file");
-          print<GeneralWarnCtrl>(
-              std::cerr,
-              "Failure may has already occured. Continue may be irrelevant. "
-              "[Continue(Y/N)]:");
-          char buf;
-        inp:
-          scanf("%c", &buf);
-          if (buf == 'y' || buf == 'Y')
-            continue;
-          else if (buf == 'n' || buf == 'N')
-            return false;
-          else
-            print<GeneralErrorCtrl>(std::cerr,
-                                    "Invaild input. Please input again:");
-          goto inp;
-        }
-      } else {  // File in new version not found.
-        QFile oldfile(oinfo.absoluteFilePath());
-        if (oldfile.open(QFile::Truncate | QFile::ReadOnly)) {
-          generateDeltaFile(&oldfile, nullptr, udest, rdest, oroot, nroot, ulog,
-                            rlog);
-          oldfile.close();
-          continue;
-        } else {  // Open failed.
-          if (!oldfile.isOpen())
-            print<GeneralErrorCtrl>(std::cerr, "Cannot open old file");
-          print<GeneralWarnCtrl>(
-              std::cerr,
-              "Failure may has already occured. Continue may be irrelevant. "
-              "[Continue(Y/N)]:");
-          char buf;
-        inp_1:
-          scanf("%c", &buf);
-          if (buf == 'y' || buf == 'Y')
-            continue;
-          else if (buf == 'n' || buf == 'N')
-            return false;
-          else
-            print<GeneralErrorCtrl>(std::cerr,
-                                    "Invaild input. Please input again:");
-          goto inp_1;
+          if (!newfile.isOpen()) {
+            OTAError::S_file_open_fail xerror{::std::move(p),
+                                              STRING_SOURCE_LOCATION};
+            throw OTAError{::std::move(xerror)};
+          }
         }
       }
     }
 
-    // Process the remaining new files.
-    for (auto& ninfo : map) {
-      QFile newfile(ninfo.absoluteFilePath());
-      if (newfile.open(QFile::Truncate | QFile::ReadOnly)) {
-        generateDeltaFile(nullptr, &newfile, udest, rdest, oroot, nroot, ulog,
-                          rlog);
-        newfile.close();
-        continue;
-      } else {  // Open failed.
-        if (!newfile.isOpen())
-          print<GeneralErrorCtrl>(std::cerr, "Cannot open new file");
-        print<GeneralWarnCtrl>(
-            std::cerr,
-            "Failure may has already occured. Continue may be irrelevant. "
-            "[Continue(Y/N)]:");
-        char buf;
-      inp_2:
-        scanf("%c", &buf);
-        if (buf == 'y' || buf == 'Y')
-          continue;
-        else if (buf == 'n' || buf == 'N')
-          return false;
-        else
-          print<GeneralErrorCtrl>(std::cerr,
-                                  "Invaild input. Please input again:");
-        goto inp_2;
-      }
-    }
+    return true;
+  } catch (::std::exception& e) {
+    print<GeneralFerrorCtrl>(::std::cerr, e.what());
+    OTAError::S_general xerror{QStringLiteral("Generate Dirctory failed.") +
+                               STRING_SOURCE_LOCATION};
+    throw OTAError{::std::move(xerror)};
   }
-
-  return true;
 }
 
 }  // namespace
 
 bool generateDeltaPack(QDir& dir_old, QDir& dir_new, QDir& dest_rpack,
-                       QDir& dest_upack) noexcept {
+                       QDir& dest_upack) {
   if (!dir_old.exists() || !dir_new.exists()) return false;
 
-  if (!dest_rpack.exists() && !dest_rpack.mkpath(dest_rpack.absolutePath()))
+  if (!dest_rpack.exists() && !dest_rpack.mkpath(dest_rpack.absolutePath())) {
+    print<GeneralFerrorCtrl>(
+        ::std::cerr,
+        QStringLiteral(
+            "Can't find destination directory path for rollback pack.") +
+            STRING_SOURCE_LOCATION);
     return false;
-
-  if (!dest_upack.exists() && !dest_upack.mkpath(dest_upack.absolutePath()))
+  }
+  if (!dest_upack.exists() && !dest_upack.mkpath(dest_upack.absolutePath())) {
+    print<GeneralFerrorCtrl>(
+        ::std::cerr,
+        QStringLiteral(
+            "Can't find destination directory path for update pack.") +
+            STRING_SOURCE_LOCATION);
     return false;
-
+  }
   //
   QFile ulogf(dest_upack.absoluteFilePath("update_log"));
   QFile rlogf(dest_rpack.absoluteFilePath("rollback_log"));
@@ -378,12 +396,21 @@ bool generateDeltaPack(QDir& dir_old, QDir& dir_new, QDir& dest_rpack,
     QFileInfo newdir(dir_new.absolutePath());
     QTextStream ulog(&ulogf);
     QTextStream rlog(&rlogf);
-    success = generateDeltaDir(&olddir, &newdir, dest_upack, dest_rpack,
-                               dir_old, dir_new, ulog, rlog);
+    try {
+      success = generateDeltaDir(&olddir, &newdir, dest_upack, dest_rpack,
+                                 dir_old, dir_new, ulog, rlog);
+    } catch (::std::exception& e) {
+      ulogf.close();
+      rlogf.close();
+      print<GeneralFerrorCtrl>(::std::cerr, e.what());
+      return false;
+    }
   } else {
-    print<GeneralFerrorCtrl>(std::cerr,
-                             "Generation didn't happen because of the failure "
-                             "to open or create log files.");
+    print<GeneralFerrorCtrl>(
+        ::std::cerr,
+        QStringLiteral("Generation didn't happen because of the failure "
+                       "to open or create log files.") +
+            STRING_SOURCE_LOCATION);
     return false;
   }
 
@@ -407,21 +434,27 @@ bool doAdd(const DeltaInfo& info, const QDir& pack, const QDir& root) {
   QString spath = pack.absoluteFilePath(info.position);
   QString dpath = root.absoluteFilePath(info.position);
   switch (info.category) {
-    case Category::DIR:
+    case Category::DIR: {
       copyDir(spath, dpath + "\\");
       if (QDir(spath).exists() && QDir(dpath).exists()) return true;
-      print<GeneralFerrorCtrl>(std::cerr,
-                               "Add action failed. Directory copy failed.");
-      break;
-    case Category::FILE:
+      OTAError::S_general xerror{
+          QStringLiteral("Add action failed. Directory copy failed.") +
+          STRING_SOURCE_LOCATION};
+      throw OTAError{::std::move(xerror)};
+    }
+    case Category::FILE: {
       if (QFile::copy(spath, dpath)) return true;
-      print<GeneralFerrorCtrl>(std::cerr,
-                               "Add action failed. File copy failed.");
-      break;
-    default:
-      print<GeneralErrorCtrl>(std::cerr,
-                              "Add action failed. Invalid info read.");
-      break;
+      OTAError::S_general xerror{
+          QStringLiteral("Add action failed. File copy failed.") +
+          STRING_SOURCE_LOCATION};
+      throw OTAError{::std::move(xerror)};
+    }
+    default: {
+      OTAError::S_general xerror{
+          QStringLiteral("Add action failed. Invalid info read.") +
+          STRING_SOURCE_LOCATION};
+      throw OTAError{::std::move(xerror)};
+    }
   }
   return false;
 }
@@ -430,35 +463,36 @@ bool doDelete(const DeltaInfo& info, const QDir& pack, const QDir& root) {
   Q_UNUSED(pack);
   QString dpath = root.absoluteFilePath(info.position);
   switch (info.category) {
-    case Category::DIR:
+    case Category::DIR: {
       if (QDir target(dpath); target.exists() && target.removeRecursively())
         return true;
-      print<GeneralFerrorCtrl>(
-          std::cerr, "Delete action failed. Directory delete failed.");
-      break;
-    case Category::FILE:
+
+      OTAError::S_general xerror{
+          QStringLiteral("Delete action failed. Directory delete failed.") +
+          STRING_SOURCE_LOCATION};
+      throw OTAError{::std::move(xerror)};
+    }
+    case Category::FILE: {
       if (QFile(dpath).exists() && QFile::remove(dpath)) return true;
-      print<GeneralFerrorCtrl>(std::cerr,
-                               "Delete action failed. File delete failed.");
-      break;
-    default:
-      print<GeneralErrorCtrl>(std::cerr,
-                              "Delete action failed. Invalid info read.");
-      break;
+      OTAError::S_general xerror{
+          QStringLiteral("Delete action failed. File delete failed.[") + dpath +
+          "]" + STRING_SOURCE_LOCATION};
+      throw OTAError{::std::move(xerror)};
+    }
+    default: {
+      OTAError::S_general xerror{
+          QStringLiteral("Delete action failed. Invalid info read.") +
+          STRING_SOURCE_LOCATION};
+      throw OTAError{::std::move(xerror)};
+    }
   }
   return false;
 }
 
-bool doDelta(const DeltaInfo& info, const QDir& pack, const QDir& root,
-             bool safe_mode = false) noexcept {
+bool doDelta(const DeltaInfo& info, const QDir& pack, const QDir& root) {
   QString patch_path = pack.absoluteFilePath(info.position + ".r");
   QString source_path = root.absoluteFilePath(info.position);
   switch (info.category) {
-    case Category::DIR:
-      // Impossible.
-      print<GeneralFerrorCtrl>(
-          std::cerr, "Applying delta patch failed. Invalid info read.");
-      break;
     case Category::FILE: {
       QFile patch(patch_path);
       QFile target(source_path);
@@ -466,38 +500,24 @@ bool doDelta(const DeltaInfo& info, const QDir& pack, const QDir& root,
         QByteArray buffer_target = target.readAll();
         QStringList slist = info.opaque.split("/", Qt::SkipEmptyParts);
         if (slist.isEmpty()) {
-          print<GeneralFerrorCtrl>(
-              std::cerr, "Applying delta patching Failed. Info is corrupted.");
           patch.close();
           target.close();
-          return false;
-        } else if (safe_mode && slist.size() != 3) {
-          print<GeneralErrorCtrl>(
-              std::cerr, "Applying delta patch on [" + info.position +
-                             "] meets error. Info might be corrupted. If the "
-                             "safe mode is on, the md5 check will skip.");
-        } else if (safe_mode && slist.size() == 3) {
-          QCryptographicHash hash(QCryptographicHash::Md5);
-          hash.addData(buffer_target);
-          if (hash.result().toStdString() != slist.at(1).toStdString()) {
-            // MD5 check failed.
-            print<GeneralErrorCtrl>(
-                std::cerr,
-                "MD5 check on [" + info.position + "] failed. Action aborts.");
-            patch.close();
-            target.close();
-            return false;
-          }
+          OTAError::S_general xerror{
+              QStringLiteral(
+                  "Applying delta patching Failed. Info is corrupted.") +
+              STRING_SOURCE_LOCATION};
+          throw OTAError{::std::move(xerror)};
         }
 
         int filesize = slist.at(0).toUInt();
         if (filesize == 0) {
           patch.close();
           target.close();
-          print<GeneralFerrorCtrl>(std::cerr,
-                                   "Applying delta patch failed. Cannot "
-                                   "allocate valid memory for new file.");
-          return false;
+          OTAError::S_general xerror{
+              QStringLiteral("Applying delta patch failed. Cannot "
+                             "allocate valid memory for new file.") +
+              STRING_SOURCE_LOCATION};
+          throw OTAError{::std::move(xerror)};
         }
         QByteArray buffer_result(filesize, '\0');
         bspatch_stream stream{&patch, &plainRead};
@@ -509,88 +529,74 @@ bool doDelta(const DeltaInfo& info, const QDir& pack, const QDir& root,
           target.close();
           patch.close();
 
-          // Do MD5 check.
-          if (safe_mode) {
-            if (slist.size() == 3) {
-              QCryptographicHash hash(QCryptographicHash::Md5);
-              hash.addData(buffer_result);
-              if (hash.result().toStdString() != slist.at(2).toStdString()) {
-                // Check failed.
-                print<GeneralErrorCtrl>(std::cerr,
-                                        "MD5 check on [" + info.position +
-                                            "] failed. Action aborts.");
-                patch.close();
-                target.close();
-                return false;
-              }
-            } else {
-              // Miss the md5 value.
-              print<GeneralWarnCtrl>(std::cout,
-                                     "[" + info.position +
-                                         "] MD5 check doesn't happen. Cannot "
-                                         "find md5 value in the info.");
-            }
-          }
-
           if (!target.open(QFile::WriteOnly | QFile::Truncate)) {
-            print<GeneralFerrorCtrl>(
-                std::cerr,
-                "Applying delta patch failed. Cannot write "
-                "date into target file.");
-            return false;
+            OTAError::S_general xerror{
+                QStringLiteral("Applying delta patch failed. Cannot write "
+                               "date into target file.") +
+                STRING_SOURCE_LOCATION};
+            throw OTAError{::std::move(xerror)};
           }
           if (target.write(buffer_result) != buffer_result.size()) {
-            print<GeneralFerrorCtrl>(
-                std::cerr,
-                "Applying delta patch failed. Unexpected error occurs when "
-                "writing to target file.");
             target.close();
-            return false;
+            OTAError::S_general xerror{
+                QStringLiteral(
+                    "Applying delta patch failed. Unexpected error occurs when "
+                    "writing to target file.") +
+                STRING_SOURCE_LOCATION};
+            throw OTAError{::std::move(xerror)};
           }
           target.close();
           return true;
         } else {  // Patch failed
-          print<GeneralFerrorCtrl>(std::cerr,
-                                   "Function \"bspatch\" failed, cannot apply "
-                                   "delta patch to target file.");
           patch.close();
           target.close();
-          return false;
+          OTAError::S_general xerror{
+              QStringLiteral("Function \"bspatch()\" failed, cannot apply "
+                             "delta patch to target file.") +
+              STRING_SOURCE_LOCATION};
+          throw OTAError{::std::move(xerror)};
         }
       } else {  // Open failed.
-        if (!patch.isOpen())
-          print<GeneralFerrorCtrl>(
-              std::cerr,
-              "Applying delta patch failed. Cannot open patch file.");
-        if (!target.isOpen())
-          print<GeneralFerrorCtrl>(
-              std::cerr,
-              "Applying delta patch failed. Cannot open target file.");
-        return false;
+        if (!patch.isOpen()) {
+          OTAError::S_file_open_fail xerror{
+              ::std::move(patch_path),
+              QStringLiteral("Applying delta patch failed.") +
+                  STRING_SOURCE_LOCATION};
+          throw OTAError{::std::move(xerror)};
+        }
+        if (!target.isOpen()) {
+          OTAError::S_file_open_fail xerror{
+              ::std::move(source_path),
+              QStringLiteral("Applying delta patch failed.") +
+                  STRING_SOURCE_LOCATION};
+          throw OTAError{::std::move(xerror)};
+        }
       }
       break;
     }
+      // Impossible
+    case Category::DIR:
     default:
-      print<GeneralFerrorCtrl>(
-          std::cerr, "Applying delta patch failed. Invalid info read.");
-      break;
+      OTAError::S_general xerror{
+          QStringLiteral("Applying delta patch failed. Invalid info read.") +
+          STRING_SOURCE_LOCATION};
+      throw OTAError{::std::move(xerror)};
   }
 
   return false;
 }
 
 bool doApply(const QDir& pack, const QDir& target, QTextStream& log,
-             QTextStream& dlog, bool safe_mode = false) noexcept {
+             QTextStream& dlog) {
   // Read the info from the dlog
-  // Dirty data will be ignored.
   DeltaInfoStream dstrm = readDeltaLog(dlog);
   auto hasDone = [&dstrm](const DeltaInfo& action) {
     for (const auto& info : dstrm)
       if (info == action) return true;
     return false;
   };
-  bool everything_fine = true;
   DeltaInfoStream stream = readDeltaLog(log);
+
   while (!stream.isEmpty()) {
     // Read from the back.
     bool success = false;
@@ -601,74 +607,70 @@ bool doApply(const QDir& pack, const QDir& target, QTextStream& log,
       continue;
     }
 
-    switch (info.action) {
-      case Action::ADD:
-        success = doAdd(info, pack, target);
-        break;
-      case Action::DELETEACT:
-        success = doDelete(info, pack, target);
-        break;
-      case Action::DELTA:
-        success = doDelta(info, pack, target, safe_mode);
-        break;
-      default: {
-        everything_fine = false;
-        print<GeneralErrorCtrl>(std::cerr,
-                                "Invalid \"Action\" info in the log");
-        print<GeneralWarnCtrl>(std::cout,
-                               "Continue patching may cause the corruption of "
-                               "files[Continues(Y/N)]:");
-        char buf;
-      inp:
-        scanf("%c", &buf);
-        if (buf == 'y' || buf == 'Y')
+    try {
+      switch (info.action) {
+        case Action::ADD:
+          success = doAdd(info, pack, target);
           break;
-        else if (buf == 'n' || buf == 'N')
-          return false;
-        else
-          print<GeneralErrorCtrl>(std::cerr,
-                                  "Invaild input. Please input again:");
-        goto inp;
+        case Action::DELETEACT:
+          success = doDelete(info, pack, target);
+          break;
+        case Action::DELTA:
+          success = doDelta(info, pack, target);
+          break;
+        default: {
+          OTAError::S_general xerror{QStringLiteral("Invalid info read.") +
+                                     STRING_SOURCE_LOCATION};
+          throw OTAError{::std::move(xerror)};
+        }
       }
+    } catch (::std::exception& e) {
+      print<GeneralFerrorCtrl>(::std::cerr, e.what());
+      OTAError::S_general xerror{QStringLiteral("Applying patch failed.") +
+                                 STRING_SOURCE_LOCATION};
+      throw OTAError{::std::move(xerror)};
     }
+
     // Record the successful action in dlog.
-    if (success)
-      writeDeltaLog(dlog, info);
-    else {
-      everything_fine = false;
-      print<GeneralWarnCtrl>(std::cout,
-                             "Error occurs during the perform of action. Do "
-                             "you want to continue? [Continues(Y/N)]:");
-      char buf;
-    ct:
-      scanf("%c", &buf);
-      if (buf == 'y' || buf == 'Y')
-        goto goon;
-      else if (buf == 'n' || buf == 'N')
-        return false;
-      else
-        print<GeneralErrorCtrl>(std::cerr,
-                                "Invaild input. Please input again:");
-      goto ct;
+    if (success) {
+      try {
+        writeDeltaLog(dlog, info);
+      } catch (::std::exception& e) {
+        print<GeneralFerrorCtrl>(::std::cerr, e.what());
+        OTAError::S_general xerror{QStringLiteral("Applying patch failed.") +
+                                   STRING_SOURCE_LOCATION};
+        throw OTAError{::std::move(xerror)};
+      }
+    } else {
+      OTAError::S_general xerror{
+          QStringLiteral("Applying patch failed. Error occurs during the "
+                         "perform of action.") +
+          STRING_SOURCE_LOCATION};
+      throw OTAError{::std::move(xerror)};
     }
-  goon:
     stream.pop_back();
   }
-  return everything_fine;
+  return true;
 }
 
 }  // namespace
 
-bool applyDeltaPack(QDir& pack, QDir& target, bool safe_mode) noexcept {
+bool applyDeltaPack(QDir& pack, QDir& target) {
   if constexpr (bs_debug_mode)
     print<GeneralDebugCtrl>(std::cout, "[applyDeltaPack]");
 
   if (!pack.exists() || !target.exists()) {
-    if (!pack.exists())
-      print<GeneralErrorCtrl>(std::cerr, "[Invalid pack dir]");
-    else
-      print<GeneralErrorCtrl>(std::cerr, "[Invalid target dir]");
-    return false;
+    if (!pack.exists()) {
+      print<GeneralFerrorCtrl>(
+          ::std::cerr,
+          QStringLiteral("[Invalid pack dir]") + STRING_SOURCE_LOCATION);
+      return false;
+    } else {
+      print<GeneralFerrorCtrl>(
+          ::std::cerr,
+          QStringLiteral("[Invalid target dir]") + STRING_SOURCE_LOCATION);
+      return false;
+    }
   }
 
   // Generate a done-list.
@@ -683,14 +685,21 @@ bool applyDeltaPack(QDir& pack, QDir& target, bool safe_mode) noexcept {
       print<GeneralDebugCtrl>(std::cout,
                               "[ Pack  : " + pack.absolutePath() + "]");
       print<GeneralDebugCtrl>(std::cout,
-                              "[Target : " + pack.absolutePath() + "]");
+                              "[Target : " + target.absolutePath() + "]");
     }
     QTextStream ulog(&ulogf);
     QTextStream dlog(&dlogf);
-    doApply(pack, target, ulog, dlog, safe_mode);
+    try {
+      doApply(pack, target, ulog, dlog);
+    } catch (::std::exception& e) {
+      dlogf.close();
+      ulogf.close();
+      print<GeneralFerrorCtrl>(std::cerr, e.what());
+      return false;
+    }
+
     dlogf.close();
     ulogf.close();
-    print<GeneralSuccessCtrl>(std::cout, "Patch succeed.");
     return true;
   }
 
@@ -703,21 +712,27 @@ bool applyDeltaPack(QDir& pack, QDir& target, bool safe_mode) noexcept {
       print<GeneralDebugCtrl>(std::cout,
                               "[ Pack  : " + pack.absolutePath() + "]");
       print<GeneralDebugCtrl>(std::cout,
-                              "[Target : " + pack.absolutePath() + "]");
+                              "[Target : " + target.absolutePath() + "]");
     }
     QTextStream rlog(&rlogf);
     QTextStream dlog(&dlogf);
-    doApply(pack, target, rlog, dlog, safe_mode);
+    try {
+      doApply(pack, target, rlog, dlog);
+    } catch (::std::exception& e) {
+      dlogf.close();
+      rlogf.close();
+      print<GeneralFerrorCtrl>(::std::cerr, e.what());
+      return false;
+    }
     dlogf.close();
     rlogf.close();
-    print<GeneralSuccessCtrl>(std::cout, "Patch succeed.");
     return true;
   }
-
   print<GeneralFerrorCtrl>(
-      std::cerr,
-      "Patch didn't happen, bacause of the failure to open "
-      "log files.");
+      ::std::cerr,
+      QStringLiteral("Patch didn't happen, bacause of the failure to open "
+                     "log files.") +
+          STRING_SOURCE_LOCATION);
   return false;
 }
 

@@ -5,10 +5,12 @@
 #include <QTextStream>
 #include <cstdint>
 
+#include "otaerr.hpp"
+
 namespace otalib {
 
-enum class Action { ADD, DELETEACT, DELTA, ERRORACT, UNEXPECTED_ERROR };
-enum class Category { FILE, DIR, UNEXPECTED_ERROR };
+enum class Action { ADD, DELETEACT, DELTA };
+enum class Category { FILE, DIR };
 /* Info pattern
  *  Normal info: action|category|position|
  *  Error info : error |category|position|error-msg
@@ -27,9 +29,9 @@ inline bool operator==(const DeltaInfo& lhs, const DeltaInfo& rhs) noexcept {
 
 using DeltaInfoStream = QVector<DeltaInfo>;
 
-void writeDeltaLog(QTextStream& log, const DeltaInfo& info) noexcept;
+void writeDeltaLog(QTextStream& log, const DeltaInfo& info);
 
-DeltaInfoStream readDeltaLog(QTextStream& log) noexcept;
+DeltaInfoStream readDeltaLog(QTextStream& log);
 
 }  // namespace otalib
 

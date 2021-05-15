@@ -3,13 +3,19 @@
 namespace otalib {
 namespace {
 
-#define INFO_LOAD_ERROR_CHECK                                                 \
-  if (list.isEmpty())                                                         \
-    return DeltaInfo{Action::ERRORACT, Category::UNEXPECTED_ERROR, QString(), \
-                     "Info-Load-Error"};
+#define INFO_LOAD_ERROR_CHECK                        \
+  if (list.isEmpty()) {                              \
+    OTAError::S_delta_log_invalid_line xerror{line}; \
+    throw OTAError{::std::move(xerror)};             \
+  }
+
+#define INFO_LOAD_UNEXPECTED_END                   \
+                                                   \
+  OTAError::S_delta_log_invalid_line xerror{line}; \
+  throw OTAError{::std::move(xerror)};
 
 // Receive the action block and shift.
-DeltaInfo receiveLine(const QString& line) noexcept {
+DeltaInfo receiveLine(const QString& line) {
   DeltaInfo info;
   QStringList list = line.split("|");
 
@@ -22,10 +28,9 @@ DeltaInfo receiveLine(const QString& line) noexcept {
     info.action = Action::DELETEACT;
   else if (action == "DELTA")
     info.action = Action::DELTA;
-  else if (action == "ERROR")
-    info.action = Action::ERRORACT;
-  else
-    info.action = Action::UNEXPECTED_ERROR;
+  else {
+    INFO_LOAD_UNEXPECTED_END
+  }
 
   // Receive the "Category" field.
   list.pop_front();
@@ -35,19 +40,16 @@ DeltaInfo receiveLine(const QString& line) noexcept {
     info.category = Category::DIR;
   else if (category == "FILE")
     info.category = Category::FILE;
-  else
-    info.category = Category::UNEXPECTED_ERROR;
-
+  else {
+    INFO_LOAD_UNEXPECTED_END
+  }
   // Receive the "Position" field.
   list.pop_front();
   INFO_LOAD_ERROR_CHECK
   info.position = list.front();
 
-  info.opaque = QString("Null");
+  info.opaque = QString();
   if (info.action == Action::DELTA && info.category == Category::FILE) {
-    list.pop_front();
-    if (!list.isEmpty()) info.opaque = list.front();
-  } else if (info.action == Action::ERRORACT) {
     list.pop_front();
     if (!list.isEmpty()) info.opaque = list.front();
   }
@@ -56,7 +58,7 @@ DeltaInfo receiveLine(const QString& line) noexcept {
 
 }  // namespace
 
-void writeDeltaLog(QTextStream& log, const DeltaInfo& info) noexcept {
+void writeDeltaLog(QTextStream& log, const DeltaInfo& info) {
   // Stringlize the "Action" field.
   switch (info.action) {
     case Action::ADD:
@@ -68,12 +70,13 @@ void writeDeltaLog(QTextStream& log, const DeltaInfo& info) noexcept {
     case Action::DELTA:
       log << "DELTA|";
       break;
-    case Action::ERRORACT:
-      log << "ERROR|";
-      break;
-    default:
-      log << "UNEXPECTED_ERROR|";
-      break;
+    default: {
+      OTAError::S_general xerror{
+          QStringLiteral(
+              "Meet invalid delta log info, writing delta log failed.") +
+          STRING_SOURCE_LOCATION};
+      throw OTAError{::std::move(xerror)};
+    }
   }
 
   // Stringlize the "Category" field.
@@ -84,9 +87,11 @@ void writeDeltaLog(QTextStream& log, const DeltaInfo& info) noexcept {
     case Category::FILE:
       log << "FILE|";
       break;
-    default:
-      log << "UNEXPECTED_ERROR|";
-      break;
+      OTAError::S_general xerror{
+          QStringLiteral(
+              "Meet invalid delta log info, writing delta log failed.") +
+          STRING_SOURCE_LOCATION};
+      throw OTAError{::std::move(xerror)};
   }
 
   // Stringlize the "Position" field.
@@ -99,7 +104,7 @@ void writeDeltaLog(QTextStream& log, const DeltaInfo& info) noexcept {
   }
 }
 
-DeltaInfoStream readDeltaLog(QTextStream& log) noexcept {
+DeltaInfoStream readDeltaLog(QTextStream& log) {
   DeltaInfoStream stream;
   QString line;
   while (log.readLineInto(&line)) stream.push_back(receiveLine(line));

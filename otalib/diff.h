@@ -15,6 +15,7 @@
 #include "bsdiff/bspatch.h"
 #include "delta_log.h"
 #include "logger/logger.h"
+#include "otaerr.hpp"
 
 namespace otalib::bs {
 
@@ -25,10 +26,10 @@ namespace otalib::bs {
 
 // Generate update pack and rollback pack.
 bool generateDeltaPack(QDir& oldfile, QDir& newfile, QDir& rollback_dest,
-                       QDir& update_dest) noexcept;
+                       QDir& update_dest);
 
 // Apply the delta pack to update/rollback app.
-bool applyDeltaPack(QDir& pack, QDir& target, bool safe_mode = false) noexcept;
+bool applyDeltaPack(QDir& pack, QDir& target);
 
 }  // namespace otalib::bs
 
