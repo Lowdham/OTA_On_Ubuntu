@@ -3,10 +3,13 @@
 using namespace otalib;
 
 void hashfile_test() {
+#if 1
   // Server generate hash file
   if (generate_hash_log_file("./subdir", "merkle_tree_hash.log"))
     print<GeneralSuccessCtrl>(
         std::cout, "server generate merkle hash log file successfully!");
+
+#endif
 
   // Simulate client verify
   QStringList file_hash;
