@@ -150,11 +150,11 @@ class VersionMap {
           curMinHops_ = hops;
           edges.clear();
           for (k = 0; k + 1 < hops; ++k) {
-            edges.emplace_back(parent_->stor[indexs[k]],
-                               parent_->stor[indexs[k + 1]]);
+            edges.emplace_back(parent_->stor_[indexs[k]],
+                               parent_->stor_[indexs[k + 1]]);
           }
           if (k == hops - 1) {
-            edges.emplace_back(parent_->stor[indexs[k]], parent_->stor[goal]);
+            edges.emplace_back(parent_->stor_[indexs[k]], parent_->stor_[goal]);
           }
         }
         return;
@@ -218,8 +218,8 @@ class VersionMap {
   }
 
   // Get the distance of two index.
-  inline constexpr VerDist distanceOfVerIndex(VerIndex i, VerIndex j) const
-      noexcept {
+  inline constexpr VerDist distanceOfVerIndex(VerIndex i,
+                                              VerIndex j) const noexcept {
     return i < j ? j - i : i - j;
   }
 
@@ -234,8 +234,8 @@ class VersionMap {
   }
 
   // Check whether the node is on a certain level.
-  inline constexpr bool checkHit(LevelType level, VerIndex index) const
-      noexcept {
+  inline constexpr bool checkHit(LevelType level,
+                                 VerIndex index) const noexcept {
     return index % distanceOfLevel(level) == 0;
   }
 
@@ -248,7 +248,7 @@ class VersionMap {
       VerIndex prev = index - distance;
       if (prev < 0) continue;
 
-      callback_on_ac(stor_[prev], stor_[index]);
+      callback_on_ac_(stor_[prev], stor_[index]);
     }
   }
 };
