@@ -34,7 +34,9 @@ static void copyDir(const QString& source, const QString& dest) {
 #endif
 
 #ifdef __linux__
-  QString cmd("cp -r " + source + "/* " + dest);
+  QString src = source.trimmed();
+  if (src.isEmpty()) return;
+  QString cmd("cp -r " + src + "/* " + dest);
   system(cmd.toStdString().c_str());
   return;
 #endif
