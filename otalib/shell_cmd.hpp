@@ -10,21 +10,21 @@
 
 namespace otalib {
 
-inline void tar_create_archive_file_gzip(const QString& directory,
+static void tar_create_archive_file_gzip(const QString& directory,
                                          const QString& archive_file) {
   QString cmd =
       QString("tar -zcf \"%1\" \"%2\"").arg(archive_file).arg(directory);
   ::system(cmd.toStdString().c_str());
 }
 
-inline void tar_extract_archive_file_gzip(const QString& archive_file,
+static void tar_extract_archive_file_gzip(const QString& archive_file,
                                           const QString& directory) {
   QString cmd =
       QString("tar -zxf \"%1\" \"%2\"").arg(archive_file).arg(directory);
   ::system(cmd.toStdString().c_str());
 }
 
-void copyDir(const QString& source, const QString& dest) {
+static void copyDir(const QString& source, const QString& dest) {
 #if defined(_WIN64) || defined(_WIN32)
   QString s = "\"" + source + "\"";
   QString d = "\"" + dest + "\"";
@@ -40,7 +40,7 @@ void copyDir(const QString& source, const QString& dest) {
 #endif
 }
 
-::std::string getCmdResult(const ::std::string& cmd) {
+static ::std::string getCmdResult(const ::std::string& cmd) {
 #ifdef __linux__
   if (cmd.empty()) return ::std::string();
 
