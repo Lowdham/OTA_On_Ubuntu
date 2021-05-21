@@ -18,8 +18,8 @@ using merkle_tree_t = merkle::TreeT<kSha256Len, merkle::sha256_openssl>;
 using merkle_hash_t = merkle::Hash;
 using hash_table_t = std::unordered_map<std::string, std::string>;
 
-static void sha256_hash_file(const std::string &filename,
-                             uint8_t md[kSha256Len]) {
+static void Sha256HashFile(const std::string &filename,
+                           uint8_t md[kSha256Len]) {
   FILE *fp = nullptr;
   fp = ::fopen(filename.c_str(), "rb");
   if (fp == nullptr) return;
@@ -36,14 +36,14 @@ static void sha256_hash_file(const std::string &filename,
 }
 
 ///
-/// \brief calc_file_sha256_hash
+/// \brief CalcFileSha256Hash
 /// \param dir_name
 /// \param tree
 /// \param htable
 /// \return
 ///
-static bool calc_file_sha256_hash(const QString &dir_name, merkle_tree_t &tree,
-                                  hash_table_t &htable, size_t &cnt) {
+static bool CalcFileSha256Hash(const QString &dir_name, merkle_tree_t &tree,
+                               hash_table_t &htable, size_t &cnt) {
   QDir dir(dir_name);
   if (!dir.exists()) return false;
 
@@ -55,16 +55,16 @@ static bool calc_file_sha256_hash(const QString &dir_name, merkle_tree_t &tree,
   for (auto &file : list) {
     if (file.fileName() == "." || file.fileName() == "..") continue;
     QString name = QDir::fromNativeSeparators(dir_name + "/" + file.fileName());
-    if (file.isDir()) {
-      calc_file_sha256_hash(name, tree, htable, cnt);
-    } else if (file.isFile()) {
+    if (file.isFile()) {
       uint8_t md[kSha256Len];
-      sha256_hash_file(name.toStdString(), md);
+      Sha256HashFile(name.toStdString(), md);
       cnt++;
 
       merkle_hash_t hash(md);
       tree.insert(hash);
       htable.emplace(name.toStdString(), hash.to_string());
+    } else if (file.isDir()) {
+      CalcFileSha256Hash(name, tree, htable, cnt);
     }
   }
   return true;
@@ -76,24 +76,24 @@ static bool calc_file_sha256_hash(const QString &dir_name, merkle_tree_t &tree,
 /// \param proof_hash
 /// \return
 ///
-static bool verify_merkle_tree(const QString &dir_name,
-                               const merkle_hash_t &proof_hash) {
+static bool VerifyMerkleTree(const QString &dir_name,
+                             const merkle_hash_t &proof_hash) {
   size_t files = 0;
   merkle_tree_t tree;
   hash_table_t htable;
-  if (!calc_file_sha256_hash(dir_name, tree, htable, files)) return false;
+  if (!CalcFileSha256Hash(dir_name, tree, htable, files)) return false;
   if (files == 0) return false;
   return tree.root() == proof_hash;
 }
 
 /// Server used to generate hash log file
-/// \brief generate_hash_log_file
+/// \brief GenerateHashLogFile
 /// \param dir_name
 /// \param gen_log_file
 /// \return
 ///
-static bool generate_hash_log_file(const QString &dir_name,
-                                   const QString &gen_log_file) {
+static bool GenerateHashLogFile(const QString &dir_name,
+                                const QString &gen_log_file) {
   FILE *fp = ::fopen(gen_log_file.toStdString().c_str(), "w");
   if (!fp) return false;
 
@@ -101,7 +101,7 @@ static bool generate_hash_log_file(const QString &dir_name,
   hash_table_t htable;
 
   size_t files = 0;
-  if (!calc_file_sha256_hash(dir_name, tree, htable, files)) return false;
+  if (!CalcFileSha256Hash(dir_name, tree, htable, files)) return false;
   if (files == 0) return false;
 
   for (auto &[path, hashv] : htable) {
@@ -126,9 +126,8 @@ static bool generate_hash_log_file(const QString &dir_name,
 /// \param proof_root_hash
 /// \return
 ///
-static bool read_lines_hash_log_file(const QString &log_file,
-                                     QStringList &lines,
-                                     merkle_hash_t &proof_root_hash) {
+static bool ReadLinesHashLogFile(const QString &log_file, QStringList &lines,
+                                 merkle_hash_t &proof_root_hash) {
   QFile file(log_file);
   if (!file.open(QIODevice::ReadOnly)) return false;
   char buf[1024];
