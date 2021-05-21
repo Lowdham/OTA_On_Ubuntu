@@ -3,15 +3,32 @@
 
 #include <QDir>
 
+#include "sha256_hash.h"
+
 namespace otalib {
-struct file_logger {
-  explicit file_logger(const QString &log_file_name) : file_(log_file_name) {
+struct FileLogger {
+  explicit FileLogger(const QString &log_file_name) : file_(log_file_name) {
     file_.open(QIODevice::ReadWrite);
   }
 
-  void close() { file_.close(); }
+  static merkle_hash_t GetHashFromLogFile(const QString &log_file) {
+    QFile file(log_file);
+    if (!file.open(QIODevice::ReadOnly)) return merkle_hash_t();
+    char buf[1024];
+    merkle_tree_t tree;
+    uint8_t md[kSha256Len];
+    while (-1 != file.readLine(buf, sizeof(buf))) {
+      QString filename = QString(buf).trimmed();
+      Sha256HashFile(filename.toStdString(), md);
+      tree.insert(merkle_hash_t(md));
+    }
+    file.close();
+    return tree.root();
+  }
 
-  void append_dir(const QString &dir_name) {
+  void Close() { file_.close(); }
+
+  void AppendDir(const QString &dir_name) {
     QDir dir(dir_name);
     if (!dir.exists()) return;
 
@@ -24,7 +41,7 @@ struct file_logger {
       QString name =
           QDir::fromNativeSeparators(dir_name + "/" + file.fileName());
       if (file.isDir()) {
-        append_dir(name);
+        AppendDir(name);
       } else if (file.isFile()) {
         file_.write(name.toLocal8Bit());
         file_.write("\r\n");
@@ -33,7 +50,7 @@ struct file_logger {
     }
   }
 
-  void append(const QString &file) {
+  void Append(const QString &file) {
     file_.write(file.toLocal8Bit());
     file_.write("\r\n");
     file_.flush();
