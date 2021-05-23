@@ -15,8 +15,8 @@ void TcpConnection::initialize(int connfd) {
 int TcpConnection::read(int *err) {
   int n = -1;
 #ifdef SUPPORT_SSL_LIB
-  char buffer[4096];
-  while ((n = ::SSL_read(ssl_, buffer, 4096)) > 0) {
+  char buffer[kMaxBuffer];
+  while ((n = ::SSL_read(ssl_, buffer, kMaxBuffer)) > 0) {
     recver_.append(buffer, n);
   }
   *err = ::SSL_get_error(ssl_, n);
