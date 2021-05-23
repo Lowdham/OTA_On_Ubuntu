@@ -144,12 +144,13 @@ void TcpServer::handle_connected_conn(int connfd) {
 void TcpServer::handle_conn_close(TcpConnectionPtr conn) {
   if (conn->disconnected()) return;
 
+  if (close_cb_) close_cb_(conn);
+
   conn->disconnected(true);
 #ifdef SUPPORT_SSL_LIB
   ::SSL_shutdown(conn->ssl());
   ::SSL_free(conn->ssl());
 #endif
-  if (close_cb_) close_cb_(conn);
   del_fd(conn->fd());
 }
 
