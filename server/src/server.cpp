@@ -1,5 +1,7 @@
 #include "server/include/server.h"
 
+#include "server/include/FileLoader.hpp"
+
 using namespace otaserver;
 
 using std::placeholders::_1;
@@ -10,7 +12,7 @@ OTAServer::OTAServer(QObject* parent) : QObject(parent) {
   server_->set_close_conn_cb(std::bind(&OTAServer::closeConnection, this, _1));
   server_->set_msg_cb(std::bind(&OTAServer::readMessage, this, _1));
 
-  server_->set_idle_timeout(5000);
+  server_->set_idle_timeout(2000);
   // server generate public.crt and private.pem
 
   // openssl genrsa -out private.pem 2048
@@ -40,9 +42,7 @@ void OTAServer::newConnection(TcpConnectionPtr conn) {
   print<GeneralSuccessCtrl>(std::cout, conn->peer_address().to_string());
 }
 
-void OTAServer::closeConnection(TcpConnectionPtr conn) {
-  print<GeneralWarnCtrl>(std::cout, conn->peer_address().to_string());
-}
+void OTAServer::closeConnection(TcpConnectionPtr conn) {}
 
 ///
 /// \brief OTAServer::readMessage
@@ -59,6 +59,8 @@ bool OTAServer::readMessage(TcpConnectionPtr conn) {
   print<GeneralInfoCtrl>(std::cout, data);
 
   // send message to client
-  conn->sender()->append(data.data(), data.size());
+  // conn->sender()->append(data.data(), data.size());
+  FileLoader("test.file").readAll(conn->sender());
+
   return true;
 }

@@ -3,7 +3,6 @@
 
 #include <openssl/err.h>
 #include <openssl/ssl.h>
-
 namespace otaserver {
 namespace net {
 class SSLTls {
