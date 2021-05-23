@@ -4,7 +4,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <openssl/ssl3.h>
-#include <openssl/tls1.h>
+#include <signal.h>
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -12,17 +12,12 @@
 #include <QByteArray>
 #include <QString>
 
-#include "../server/include/Buffer.h"
+#include "buffer.hpp"
 #include "otaerr.hpp"
 
-namespace otaserver::net {
-class Buffer;
-}
-
-// 16K
-constexpr static const size_t kMaxBuffer = 16 * 1024;
-using DataSize = unsigned long long;
 namespace otalib {
+
+using DataSize = unsigned long long;
 
 class SSLSocketClient {
  public:
@@ -38,11 +33,11 @@ class SSLSocketClient {
     progressCb_ = std::move(cb);
   }
 
-  bool send(const char* data, size_t size);
-  bool send(const std::string& data);
-  bool send(const QByteArray& data);
+  int send(const char* data, size_t size);
+  int send(const std::string& data);
+  int send(const QByteArray& data);
 
-  void recv();
+  int recv();
 
   decltype(auto) sender() { return &sender_; }
   decltype(auto) recver() { return &recver_; }
@@ -60,8 +55,8 @@ class SSLSocketClient {
   struct sockaddr_in si_;
 
   ProgressCallback progressCb_;
-  otaserver::net::Buffer sender_;
-  otaserver::net::Buffer recver_;
+  Buffer sender_;
+  Buffer recver_;
 };
 }  // namespace otalib
 
