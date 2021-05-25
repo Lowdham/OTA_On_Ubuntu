@@ -1,7 +1,5 @@
 #include "../include/TcpConnection.h"
 
-#include <unistd.h>
-
 using namespace otaserver::net;
 
 void TcpConnection::initialize(int connfd) {
@@ -39,7 +37,6 @@ int TcpConnection::write(int *err) {
       *err = ::SSL_get_error(ssl_, n);
       return n;
     }
-
 #else
     n = ::write(connfd_, sender_.peek() + len - r_len, r_len);
 
@@ -50,10 +47,26 @@ int TcpConnection::write(int *err) {
 #endif
     sender_.retired(n);
     r_len -= n;
+    // send all
     if (r_len <= 0) {
-      n = 0;
-      sender_.retired_all();
-      break;
+      if (sender_.readable() == 0 && sender_.mapped_size() &&
+          sender_.use_mapped()) {
+        sender_.use_mapped(false);
+        n = 0;
+        sender_.retired_all();
+        sender_.unmapped();
+        break;
+      } else if (sender_.readable() == 0 && sender_.mapped_size() &&
+                 !sender_.use_mapped()) {
+        len = sender_.mapped_size();
+        r_len = len;
+        sender_.has_written(len);
+        sender_.use_mapped(true);
+      } else {
+        n = 0;
+        sender_.retired_all();
+        break;
+      }
     }
   }
   return n;
