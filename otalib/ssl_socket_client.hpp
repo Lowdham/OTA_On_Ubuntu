@@ -22,7 +22,6 @@ using DataSize = unsigned long long;
 class SSLSocketClient {
  public:
   explicit SSLSocketClient(const QString& ip, quint16 port);
-
   using ProgressCallback = std::function<void(
       const char* data, DataSize totalSize, DataSize chunkSize)>;
 

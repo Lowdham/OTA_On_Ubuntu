@@ -26,7 +26,8 @@ static const ::std::string kSignHashAlgorithmCmd = "-sha256 ";
 void genKey(const QString& prikey_file, const QString& pubkey_file);
 
 // Sign the target.
-bool sign(const QFileInfo& target, const QFileInfo& prikey) noexcept;
+bool sign(const QFileInfo& target, const QFileInfo& prikey,
+          const QString& version) noexcept;
 
 // Verify the signature
 bool verify(const QFileInfo& hash, const QFileInfo& signature,

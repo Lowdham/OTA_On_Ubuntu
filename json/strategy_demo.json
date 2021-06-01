@@ -1,0 +1,49 @@
+[
+  {
+    "name" : "demo_1",
+    "newest" : "Yes",
+    "update" : [
+      {
+        "strategy" : "compulsory",
+        "condition" : {
+          "version" : {
+            "compare" : "<=",
+            "value" : "0.5.1"
+          }
+        },
+        "dest" : "0.6.0"
+      }
+    ]
+    ,
+    "rollback" : [
+      {
+        "strategy" : "compulsory",
+        "condition" : {
+          "version" : {
+            "compare" : ">",
+            "value" : "1.0.0"
+          },
+          "type" : {
+            "assign" : "!=",
+            "name" : "demotype"
+          }
+        },
+        "dest" : "0.9.5"
+      },
+      {
+        "strategy" : "compulsory",
+        "condition" : {
+          "version" : {
+            "compare" : ">",
+            "value" : "1.1.0"
+          },
+          "type" : {
+            "assign" : "==",
+            "name" : "demotype"
+          }
+        },
+        "dest" : "1.0.0"
+      }
+    ]
+  }
+]

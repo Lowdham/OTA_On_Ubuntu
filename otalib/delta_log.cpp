@@ -107,7 +107,10 @@ void writeDeltaLog(QTextStream& log, const DeltaInfo& info) {
 DeltaInfoStream readDeltaLog(QTextStream& log) {
   DeltaInfoStream stream;
   QString line;
-  while (log.readLineInto(&line)) stream.push_back(receiveLine(line));
+  while (log.readLineInto(&line)) {
+    if (line.trimmed().isEmpty()) continue;
+    stream.push_back(receiveLine(line));
+  }
   return stream;
 }
 

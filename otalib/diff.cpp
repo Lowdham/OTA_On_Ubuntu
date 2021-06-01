@@ -14,7 +14,7 @@ static int plainWrite(bsdiff_stream* stream, const void* buffer, int size) {
 }
 
 void copyDir(const QDir& source, const QDir& dest) {
-  copyDir(source.path(), dest.path());
+  copyDirCmd(source.path(), dest.path());
   return;
 }
 
@@ -51,7 +51,9 @@ bool doAddActionLog(QFile* newfile, const QDir& tdir, const QDir& nroot,
 bool doAddActionLog(QFileInfo* newdir, const QDir& tdir, const QDir& nroot,
                     QTextStream& alog, QTextStream& dlog) {
   QDir dir(newdir->filePath());
-  copyDir(dir, tdir);
+  QDir tdir_tmp(tdir);
+  tdir_tmp.cdUp();
+  copyDir(dir, tdir_tmp);
   QString position = nroot.relativeFilePath(dir.absolutePath());
   try {
     writeDeltaLog(alog, {Action::ADD, Category::DIR, position, QString()});
@@ -152,6 +154,7 @@ bool generateDeltaFile(QFile* oldfile, QFile* newfile, QDir& udest, QDir& rdest,
       // Read both file and call to generate delta
       QByteArray old_buffer = oldfile->readAll();
       QByteArray new_buffer = newfile->readAll();
+      if (old_buffer == new_buffer) return true;
       QFileInfo ofile(*oldfile);
       QFileInfo nfile(*newfile);
       QString opos = oroot.relativeFilePath(ofile.filePath());
@@ -265,8 +268,7 @@ bool generateDeltaDir(QFileInfo* olddir, QFileInfo* newdir, QDir& udest,
           QString pn = ninfo->absoluteFilePath();
           QFile oldfile(po);
           QFile newfile(pn);
-          if (oldfile.open(QFile::Truncate | QFile::ReadOnly) &&
-              newfile.open(QFile::Truncate | QFile::ReadOnly)) {
+          if (oldfile.open(QFile::ReadOnly) && newfile.open(QFile::ReadOnly)) {
             try {
               generateDeltaFile(&oldfile, &newfile, udest, rdest, oroot, nroot,
                                 ulog, rlog);
@@ -294,7 +296,7 @@ bool generateDeltaDir(QFileInfo* olddir, QFileInfo* newdir, QDir& udest,
         } else {  // File in new version not found.
           QString p = oinfo.absoluteFilePath();
           QFile oldfile(p);
-          if (oldfile.open(QFile::Truncate | QFile::ReadOnly)) {
+          if (oldfile.open(QFile::ReadOnly)) {
             try {
               generateDeltaFile(&oldfile, nullptr, udest, rdest, oroot, nroot,
                                 ulog, rlog);
@@ -318,7 +320,7 @@ bool generateDeltaDir(QFileInfo* olddir, QFileInfo* newdir, QDir& udest,
       for (auto& ninfo : map) {
         QString p = ninfo.absoluteFilePath();
         QFile newfile(p);
-        if (newfile.open(QFile::Truncate | QFile::ReadOnly)) {
+        if (newfile.open(QFile::ReadOnly)) {
           try {
             generateDeltaFile(nullptr, &newfile, udest, rdest, oroot, nroot,
                               ulog, rlog);
@@ -419,7 +421,7 @@ bool doAdd(const DeltaInfo& info, const QDir& pack, const QDir& root) {
   QString dpath = root.absoluteFilePath(info.position);
   switch (info.category) {
     case Category::DIR: {
-      copyDir(spath, dpath + "\\");
+      copyDir(spath, dpath);  //  + "\\"
       if (QDir(spath).exists() && QDir(dpath).exists()) return true;
       OTAError::S_general xerror{
           QStringLiteral("Add action failed. Directory copy failed.") +
@@ -482,7 +484,7 @@ bool doDelta(const DeltaInfo& info, const QDir& pack, const QDir& root) {
       QFile target(source_path);
       if (patch.open(QFile::ReadOnly) && target.open(QFile::ReadOnly)) {
         QByteArray buffer_target = target.readAll();
-        QStringList slist = info.opaque.split("/", Qt::SkipEmptyParts);
+        QStringList slist = info.opaque.split("/");  //, Qt::SkipEmptyParts
         if (slist.isEmpty()) {
           patch.close();
           target.close();

@@ -7,23 +7,33 @@
 
 namespace otalib {
 struct FileLogger {
-  explicit FileLogger(const QString &log_file_name) : file_(log_file_name) {
+  explicit FileLogger(const QString &log_file) : file_(log_file) {
     file_.open(QIODevice::ReadWrite);
   }
 
-  static merkle_hash_t GetHashFromLogFile(const QString &log_file) {
+  static merkle_hash_t GetHashFromLogFile(const QString &log_file,
+                                          const QString &prefix = "") {
     QFile file(log_file);
     if (!file.open(QIODevice::ReadOnly)) return merkle_hash_t();
-    char buf[1024];
+    char buf[1024]{0};
     merkle_tree_t tree;
-    uint8_t md[kSha256Len];
+    uint8_t md[kSha256Len]{0};
+    QString path;
+
     while (-1 != file.readLine(buf, sizeof(buf))) {
       QString filename = QString(buf).trimmed();
-      Sha256HashFile(filename.toStdString(), md);
+      if (filename.isEmpty()) continue;
+      filename = filename.remove(0, 2);  // remvoe "./"
+      if (prefix.isEmpty())
+        path = filename;
+      else
+        path = prefix + filename;
+      Sha256HashFile(path.toStdString(), md);
       tree.insert(merkle_hash_t(md));
     }
     file.close();
-    return tree.root();
+    auto root = tree.root();
+    return root;
   }
 
   void Close() { file_.close(); }

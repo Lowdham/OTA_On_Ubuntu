@@ -23,15 +23,38 @@ constexpr bool kKeepFileOpen = false;
 
 enum class StrategyAction { update, rollback };
 enum class StrategyType { optional, compulsory, error };
-
+enum class sAction { Update, Rollback, None };
+enum class JsonType { Request, Response, Confirm, Error };
+static const QString kRequestField = QStringLiteral("Request");
+static const QString kResponseField = QStringLiteral("Response");
+static const QString kConfirmField = QStringLiteral("Confirm");
+/*
+Request Json Pattern
+{
+   "Request" = "Yes",
+   "name" = "...",
+   "version" = "...",
+   "type" = "..."
+}
+Response Json Pattern
+{
+   "Response" = "Yes",
+   "Action" = "...",
+   "Strategy" = "...",
+   "Destination" = "..."
+}
+*/
 template <typename VersionType>
 using CheckInfo = std::tuple<StrategyAction, StrategyType, VersionType>;
+template <typename VersionType>
+using RequestResponse =
+    ::std::tuple<sAction, StrategyType, VersionType, VersionType>;
 namespace {
 // Strategy Pattern
 /*
 [
   {
-    "name" = "XXX"
+    "name" : "XXX"
     "rollback" : [...],
     "update" : [...]
   },
@@ -88,13 +111,6 @@ namespace {
 ]
            NOTE: "optional" means the client can decide whether update/rollback
 or not. "compulsory" means the client must update/rollback.
-
-Request Json Pattern
-{
-   "name" = "...",
-   "version" = "...",
-   "type" = "..."
-}
 */
 enum class Compare { lt, lte, gt, gte, eq, neq, error };
 
@@ -366,8 +382,7 @@ template <typename VersionType>
   };
 
   // Check whether the responce is always the newest version.
-  if (strategy.contains("newest") && strategy.value("newest").isString() &&
-      strategy.value("newest").toBool(false)) {
+  if (strategy.contains("newest")) {
     // Always return the "newest".
     return CheckInfo<VersionType>{StrategyAction::update,
                                   StrategyType::optional, vcm.newest()};
@@ -433,8 +448,6 @@ template <typename VersionType>
       continue;
     }
   }
-
-  // Match failed.
   return ::std::nullopt;
 }
 
@@ -448,14 +461,171 @@ template <typename VersionType>
   //
   QJsonParseError err;
   QJsonDocument doc = QJsonDocument::fromJson(raw, &err);
-  if (err.error == QJsonParseError::NoError && doc.isObject()) {
-    //
-    return matchStrategy<VersionType>(getClientInfo<VersionType>(doc.object()),
-                                      vcm);
-  } else {
-    // Error
+  if (err.error == QJsonParseError::NoError && doc.isObject())
     return ::std::nullopt;
+  return matchStrategy<VersionType>(getClientInfo<VersionType>(doc.object()),
+                                    vcm);
+}
+
+static QJsonDocument MakeRequest(const QString& appname, const QString& appver,
+                                 const QString& apptype) {
+  QJsonObject jobj;
+  jobj["name"] = appname;
+  jobj["version"] = appver;
+  jobj["type"] = apptype;
+  jobj[kRequestField] = QStringLiteral("Yes");
+
+  QJsonDocument jdoc;
+  jdoc.setObject(jobj);
+  return jdoc;
+}
+
+namespace {
+//
+template <typename VersionType>
+::std::optional<RequestResponse<VersionType>> DoParseResponse(
+    const QJsonDocument& jdoc) {
+  //
+  QJsonObject jobj = jdoc.object();
+  // accept "Action" field.
+  if (!jobj.contains("Action")) return ::std::nullopt;
+  QString action_field = jobj.find("Action").value().toString();
+  if (action_field == "None")
+    return RequestResponse<VersionType>{sAction::None, StrategyType::error,
+                                        VersionType(), VersionType()};
+
+  sAction act = sAction::None;
+  if (action_field == "Update")
+    act = sAction::Update;
+  else if (action_field == "Rollback")
+    act = sAction::Rollback;
+  else
+    return ::std::nullopt;
+
+  // accept "Strategy" field.
+  if (!jobj.contains("Strategy")) return ::std::nullopt;
+  QString stg_field = jobj.find("Strategy").value().toString();
+  StrategyType stg = StrategyType::error;
+  if (stg_field == "Optional")
+    stg = StrategyType::optional;
+  else if (stg_field == "Compulsory")
+    stg = StrategyType::compulsory;
+  else
+    return ::std::nullopt;
+
+  // accept "From" field.
+  if (!jobj.contains("From")) return ::std::nullopt;
+  VersionType from{jobj.find("From").value().toString()};
+  // accept "Destination" field.
+  if (!jobj.contains("Destination")) return ::std::nullopt;
+  VersionType dest{jobj.find("Destination").value().toString()};
+  return RequestResponse<VersionType>{act, stg, from, dest};
+}
+
+}  // namespace
+
+template <typename VersionType>
+::std::optional<RequestResponse<VersionType>> ParseResponse(
+    const QByteArray& raw) {
+  //
+  QJsonParseError err;
+  QJsonDocument jdoc = QJsonDocument::fromJson(raw, &err);
+  if (err.error != QJsonParseError::NoError || !jdoc.isObject())
+    return ::std::nullopt;
+  return DoParseResponse<VersionType>(jdoc);
+}
+
+template <typename VersionType>
+QJsonDocument MakeResponse(sAction act, StrategyType stg, VersionType& from,
+                           VersionType* dest = nullptr) {
+  //
+  QJsonDocument jdoc;
+  QJsonObject jobj;
+  switch (act) {
+    case sAction::None:
+      jobj["Action"] = QStringLiteral("None");
+      jdoc.setObject(jobj);
+      return jdoc;
+    case sAction::Update:
+      jobj["Action"] = QStringLiteral("Update");
+      break;
+    case sAction::Rollback:
+      jobj["Action"] = QStringLiteral("Rollback");
+      break;
   }
+
+  switch (stg) {
+    case StrategyType::compulsory:
+      jobj["Strategy"] = QStringLiteral("Compulsory");
+      break;
+    case StrategyType::optional:
+      jobj["Strategy"] = QStringLiteral("Optional");
+      break;
+    default:
+      jobj["Strategy"] = QStringLiteral("Error");
+      break;
+  }
+
+  jobj[kResponseField] = QStringLiteral("Yes");
+  jobj["From"] = from.toString();
+  jobj["Destination"] = dest->toString();
+  jdoc.setObject(jobj);
+  return jdoc;
+}
+
+template <typename VersionType>
+::std::optional<RequestResponse<VersionType>> ParseConfirm(
+    const QByteArray& raw) {
+  return ParseResponse<VersionType>(raw);
+}
+
+template <typename VersionType>
+QJsonDocument MakeConfirm(const RequestResponse<VersionType>& response) {
+  //
+  QJsonDocument jdoc;
+  QJsonObject jobj;
+  auto [act, stg, from, dest] = response;
+  switch (act) {
+    case sAction::None:
+      jobj["Action"] = QStringLiteral("None");
+      jdoc.setObject(jobj);
+      return jdoc;
+    case sAction::Update:
+      jobj["Action"] = QStringLiteral("Update");
+      break;
+    case sAction::Rollback:
+      jobj["Action"] = QStringLiteral("Rollback");
+      break;
+  }
+
+  switch (stg) {
+    case StrategyType::compulsory:
+      jobj["Strategy"] = QStringLiteral("Compulsory");
+      break;
+    case StrategyType::optional:
+      jobj["Strategy"] = QStringLiteral("Optional");
+      break;
+    default:
+      jobj["Strategy"] = QStringLiteral("Error");
+      break;
+  }
+
+  jobj["From"] = from.toString();
+  jobj["Destination"] = dest.toString();
+  jobj[kConfirmField] = QStringLiteral("Yes");
+  jdoc.setObject(jobj);
+  return jdoc;
+}
+
+template <typename VersionType>
+JsonType Tell(const QByteArray& raw) {
+  //
+  QJsonObject jobj = QJsonDocument::fromJson(raw).object();
+  if (jobj.contains(kRequestField)) return JsonType::Request;
+  if (jobj.contains(kResponseField)) return JsonType::Response;
+  if (jobj.contains(kConfirmField)) return JsonType::Confirm;
+
+  return JsonType::Error;
 }
 
 }  // namespace otalib

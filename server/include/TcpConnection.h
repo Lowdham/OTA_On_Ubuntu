@@ -47,7 +47,6 @@ class TcpConnection {
 #endif
 
   bool disconnected_;
-
   Buffer sender_;
   Buffer recver_;
 };

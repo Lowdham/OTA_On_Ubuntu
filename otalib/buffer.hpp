@@ -2,6 +2,7 @@
 #define OTALIB_NET_BUFFER_H
 
 #include <errno.h>
+#include <sys/mman.h>
 #include <sys/uio.h>
 
 #include <vector>
@@ -23,7 +24,6 @@ class Buffer {
   char *begin() noexcept { return &*buffer_.begin(); }
   char *begin_write() noexcept { return &*buffer_.begin() + windex_; }
   const char *peek() const noexcept { return begin() + rindex_; }
-
   void retired_all() { rindex_ = windex_ = 0; }
   void retired(size_t len) noexcept {
     if (len < readable())
@@ -56,7 +56,7 @@ class Buffer {
   void has_written(size_t len) { windex_ += len; }
 
   int read_fd(int fd, int *err) {
-    char buff[65535];
+    char buff[65535]{0};
     struct iovec iov[2];
     size_t w_len = writable();
 

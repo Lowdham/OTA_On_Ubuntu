@@ -1,0 +1,6 @@
+./app
+./property.json
+./pubkey
+./exists_in_every_version.txt
+./exists_only_in_ver_2.txt
+./dir_exists_in_ver_2_3/exists_only_in_ver_2_3.txt

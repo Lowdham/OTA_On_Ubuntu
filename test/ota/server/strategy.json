@@ -1,0 +1,30 @@
+[
+  {
+    "name" : "demo app",
+    "update" : [
+      {
+        "strategy" : "optional",
+        "condition" : {
+          "version" : {
+            "compare" : "<",
+            "value" : "0.0.3"
+          }
+        },
+        "dest" : "0.0.3"
+      }
+    ]
+    ,
+    "rollback" : [
+      {
+        "strategy" : "optional",
+        "condition" : {
+          "version" : {
+            "compare" : ">",
+            "value" : "0.0.3"
+          }
+        },
+        "dest" : "0.0.3"
+      }
+    ]
+  }
+]

@@ -1,0 +1,5 @@
+./app
+./property.json
+./pubkey
+./exists_in_every_version.txt
+./dir/will_be_delete_in_ver2.txt

@@ -194,7 +194,6 @@ void TcpServer::on_write(TcpConnection *conn) {
 void TcpServer::on_read(TcpConnection *conn) {
   int err;
   int n = conn->read(&err);
-
 #ifdef SUPPORT_SSL_LIB
   if (n <= 0 && err != SSL_ERROR_WANT_READ) {
 #else

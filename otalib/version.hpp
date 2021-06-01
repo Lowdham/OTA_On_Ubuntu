@@ -116,7 +116,7 @@ struct Version : VcmControl<vcm> {
                                  static_cast<const DerivedClass&>(rhs)) != 0;
   }
 
-  inline decltype(auto) toString() const {
+  inline QString toString() const {
     return static_cast<const DerivedClass*>(this)->toString();
   }
 

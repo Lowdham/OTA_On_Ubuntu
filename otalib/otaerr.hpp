@@ -58,6 +58,16 @@ class OTAError : public ::std::exception {
     QString extra_;
   };
 
+  struct S_verify_fail {
+    QString packname_;
+    QString extra_;
+  };
+
+  struct S_hash_check_fail {
+    QString version_;
+    QString extra_;
+  };
+
   enum Index : uint8_t {
     index_success = 0,
     index_file_open_fail = 1,
@@ -68,6 +78,8 @@ class OTAError : public ::std::exception {
     index_apply_pack_unexpected_fail = 6,
     index_file_delete_fail = 7,
     index_file_write_fail = 8,
+    index_verify_fail = 9,
+    index_hash_check_fail = 10
   };
 
  private:
@@ -75,11 +87,13 @@ class OTAError : public ::std::exception {
                                      S_file_open_fail,              // 1
                                      S_file_copy_fail,              // 2
                                      S_delta_log_invalid_line,      // 3
-                                     S_delta_file_generate_fail,    // 5
-                                     S_general,                     // 6
-                                     S_apply_pack_unexpected_fail,  // 7
-                                     S_file_delete_fail,            // 8
-                                     S_file_write_fail              // 9
+                                     S_delta_file_generate_fail,    // 4
+                                     S_general,                     // 5
+                                     S_apply_pack_unexpected_fail,  // 6
+                                     S_file_delete_fail,            // 7
+                                     S_file_write_fail,             // 8
+                                     S_verify_fail,                 // 9
+                                     S_hash_check_fail              // 10
                                      >;
   StorageType stor_;
   ::std::string msg_;
@@ -106,7 +120,7 @@ class OTAError : public ::std::exception {
   void compose() {
     //
     composed_ = true;
-    QString msg;
+    QString msg("\n");
     switch (this->index()) {
       case index_success: {
         msg = "Success.";
@@ -140,6 +154,27 @@ class OTAError : public ::std::exception {
       case index_apply_pack_unexpected_fail: {
         const auto& altr = ::std::get<index_apply_pack_unexpected_fail>(stor_);
         msg = "[" + altr.packname_ + "] cannot apply into app." + altr.extra_;
+        break;
+      }
+      case index_file_delete_fail: {
+        const auto& altr = ::std::get<index_file_delete_fail>(stor_);
+        msg = "[" + altr.filename_ + "] cannot not be deleted." + altr.extra_;
+        break;
+      }
+      case index_file_write_fail: {
+        const auto& altr = ::std::get<index_file_write_fail>(stor_);
+        msg = "[" + altr.filename_ + "] cannot not be written." + altr.extra_;
+        break;
+      }
+      case index_verify_fail: {
+        const auto& altr = ::std::get<index_verify_fail>(stor_);
+        msg = "[" + altr.packname_ + "] Pack's verifying failed." + altr.extra_;
+        break;
+      }
+      case index_hash_check_fail: {
+        const auto& altr = ::std::get<index_hash_check_fail>(stor_);
+        msg = "[" + altr.version_ + "] Version's hash check failed." +
+              altr.extra_;
         break;
       }
     }

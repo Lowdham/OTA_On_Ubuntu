@@ -1,0 +1,7 @@
+{
+  "Confirm" : "Yes",
+  "Action" : "Update/Rollback",
+  "Strategy" : "Compulsory/Optional",
+  "From" : "app version",
+  "Destination" : "destination version"
+}

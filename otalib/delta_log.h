@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QTextStream>
 #include <cstdint>
+#include <QVector>
 
 #include "otaerr.hpp"
 

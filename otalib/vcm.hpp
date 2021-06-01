@@ -35,7 +35,7 @@ class VersionMap {
   Lookup lp_;
   Storage stor_;
   ::std::atomic_bool appending_ = false;
-  ::std::mutex lock_;
+  mutable ::std::mutex lock_;
 
   // Callback called when new node appends.
   ::std::function<CallbackOnAc> callback_on_ac_;
@@ -218,8 +218,8 @@ class VersionMap {
   }
 
   // Get the distance of two index.
-  inline constexpr VerDist distanceOfVerIndex(VerIndex i,
-                                              VerIndex j) const noexcept {
+  inline constexpr VerDist distanceOfVerIndex(VerIndex i, VerIndex j) const
+      noexcept {
     return i < j ? j - i : i - j;
   }
 
@@ -234,8 +234,8 @@ class VersionMap {
   }
 
   // Check whether the node is on a certain level.
-  inline constexpr bool checkHit(LevelType level,
-                                 VerIndex index) const noexcept {
+  inline constexpr bool checkHit(LevelType level, VerIndex index) const
+      noexcept {
     return index % distanceOfLevel(level) == 0;
   }
 

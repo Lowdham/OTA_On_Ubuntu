@@ -42,9 +42,9 @@ class TcpServer {
   void wakeup();
 
   void set_idle_timeout(int millsecond) { idle_timeout_ = millsecond; }
-  void set_new_conn_cb(const ConnCb &cb) { new_conn_cb_ = std::move(cb); }
-  void set_msg_cb(const MsgCb &cb) { msg_cb_ = std::move(cb); }
-  void set_close_conn_cb(const CloseCb &cb) { close_cb_ = std::move(cb); }
+  void set_new_conn_cb(ConnCb &&cb) { new_conn_cb_ = std::move(cb); }
+  void set_msg_cb(MsgCb &&cb) { msg_cb_ = std::move(cb); }
+  void set_close_conn_cb(CloseCb &&cb) { close_cb_ = std::move(cb); }
 
 #ifdef SUPPORT_SSL_LIB
   void set_certificate(const char *cert_file, const char *private_key_file,

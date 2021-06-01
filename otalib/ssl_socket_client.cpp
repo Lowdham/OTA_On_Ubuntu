@@ -17,22 +17,22 @@ SSLSocketClient::SSLSocketClient(const QString &ip, quint16 port)
   si_.sin_family = AF_INET;
   si_.sin_addr.s_addr = ::inet_addr(ip.toStdString().c_str());
   si_.sin_port = ::htons(port);
-
-  ssl_ = ::SSL_new(ctx_);
-  ::SSL_set_fd(ssl_, sockfd_);
-  ::SSL_set_connect_state(ssl_);
 }
 
 SSLSocketClient::~SSLSocketClient() {
-  if (!closed_) this->close();
+  if (!closed_) close();
+  ::SSL_free(ssl_);
+  ::SSL_CTX_free(ctx_);
 }
 
 void SSLSocketClient::initSSLSocket() {
-  sockfd_ = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   ctx_ = ::SSL_CTX_new(TLS_client_method());
+  ssl_ = ::SSL_new(ctx_);
 }
 
 bool SSLSocketClient::connectServer(quint32 timeout_second, int *error) {
+  sockfd_ = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
   fd_set wset;
   FD_ZERO(&wset);
   FD_SET(sockfd_, &wset);
@@ -54,16 +54,27 @@ bool SSLSocketClient::connectServer(quint32 timeout_second, int *error) {
   int ret = ::select(sockfd_ + 1, nullptr, &wset, nullptr, &tv);
   if (ret == -1) {
     *error = errno;
+    ::close(sockfd_);
     return false;
   } else if (ret == 0) {
     *error = errno;
+    ::close(sockfd_);
     return false;
   } else if (FD_ISSET(sockfd_, &wset)) {
     ::fcntl(sockfd_, F_SETFL, flag);
+
+    ::SSL_set_fd(ssl_, sockfd_);
+    ::SSL_set_connect_state(ssl_);
     ret = ::SSL_connect(ssl_);
+
     *error = ::SSL_get_error(ssl_, ret);
     if (*error == SSL_ERROR_SYSCALL) *error = errno;
-    if (ret != 1) return false;
+    if (ret != 1) {
+      ::close(sockfd_);
+      ::SSL_shutdown(ssl_);
+      return false;
+    }
+
     return true;
   }
   return false;
@@ -108,7 +119,6 @@ int SSLSocketClient::send(const QByteArray &data) {
 
 ///
 /// \brief SSLSocketClient::recv
-/// \return error code 0:successed
 ///
 int SSLSocketClient::recv() {
   char buffer[kMaxBuffer];
@@ -122,7 +132,7 @@ int SSLSocketClient::recv() {
     recver_.append(buffer, n);
   }
   int err = ::SSL_get_error(ssl_, n);
-  if (err == SSL_ERROR_SYSCALL) err = errno;
+  // if (err == SSL_ERROR_SYSCALL) err = errno;
   return err;
 }
 
@@ -130,7 +140,6 @@ void SSLSocketClient::close() {
   if (closed_) return;
   ::close(sockfd_);
   ::SSL_shutdown(ssl_);
-  ::SSL_free(ssl_);
-  ::SSL_CTX_free(ctx_);
+
   closed_ = true;
 }

@@ -1,5 +1,6 @@
 #include "../include/TcpConnection.h"
 
+#include <unistd.h>
 using namespace otaserver::net;
 
 void TcpConnection::initialize(int connfd) {
@@ -12,15 +13,20 @@ void TcpConnection::initialize(int connfd) {
 
 int TcpConnection::read(int *err) {
   int n = -1;
-#ifdef SUPPORT_SSL_LIB
   char buffer[kMaxBuffer];
+
+#ifdef SUPPORT_SSL_LIB
   while ((n = ::SSL_read(ssl_, buffer, kMaxBuffer)) > 0) {
     recver_.append(buffer, n);
   }
   *err = ::SSL_get_error(ssl_, n);
 #else
-  while ((n = recver_.read_fd(connfd_, err)) > 0)
-    ;
+  //  while ((n = recver_.read_fd(connfd_, err)) > 0)
+  //    ;
+  while ((n = ::read(connfd_, buffer, kMaxBuffer)) > 0) {
+    recver_.append(buffer, n);
+  }
+  *err = errno;
 #endif
   return n;
 }
@@ -49,24 +55,9 @@ int TcpConnection::write(int *err) {
     r_len -= n;
     // send all
     if (r_len <= 0) {
-      if (sender_.readable() == 0 && sender_.mapped_size() &&
-          sender_.use_mapped()) {
-        sender_.use_mapped(false);
-        n = 0;
-        sender_.retired_all();
-        sender_.unmapped();
-        break;
-      } else if (sender_.readable() == 0 && sender_.mapped_size() &&
-                 !sender_.use_mapped()) {
-        len = sender_.mapped_size();
-        r_len = len;
-        sender_.has_written(len);
-        sender_.use_mapped(true);
-      } else {
-        n = 0;
-        sender_.retired_all();
-        break;
-      }
+      n = 0;
+      sender_.retired_all();
+      break;
     }
   }
   return n;

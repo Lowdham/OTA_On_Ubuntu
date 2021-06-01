@@ -8,7 +8,9 @@
 #include <vector>
 
 #include "diff.h"
+#include "file_logger.h"
 #include "otaerr.hpp"
+#include "property.hpp"
 #include "shell_cmd.hpp"
 #include "signature.h"
 
@@ -29,7 +31,7 @@ bool lverify(const QString& file, const QFileInfo& pubkey,
   target.close();
 
   QFile tmphash("tmphash");
-  if (!tmphash.open(QFile::ReadOnly)) {
+  if (!tmphash.open(QFile::WriteOnly | QFile::Truncate)) {
     OTAError::S_file_open_fail xerr{tmphash.fileName(), STRING_SOURCE_LOCATION};
     throw OTAError{::std::move(xerr)};
   }
@@ -43,7 +45,7 @@ bool lverify(const QString& file, const QFileInfo& pubkey,
 
   tmphash.close();
   // Verifiy.
-  bool succ = verify(QFileInfo(tmphash.fileName()), pubkey, sig);
+  bool succ = verify(QFileInfo(tmphash.fileName()), sig, pubkey);
 
   if (!tmphash.remove()) {
     OTAError::S_file_delete_fail xerr{tmphash.fileName(),
@@ -76,7 +78,7 @@ void getPackFromPaths(const QDir& dest_dir,
   static_assert(::std::is_same_v<CallbackOnFind, CallbackType>,
                 "Callback function type dismatched.");
   //
-  QString lpath = dest_dir.filePath(QStringLiteral("apply_log"));
+  QString lpath = dest_dir.filePath(kApplyLogName);
   QFile log(lpath);
   if (!log.open(QFile::WriteOnly | QFile::Truncate)) {
     OTAError::S_file_open_fail xerror{::std::move(lpath),
@@ -94,9 +96,9 @@ void getPackFromPaths(const QDir& dest_dir,
     QString targetf = file.absoluteFilePath();
     QString targeth = hash.absoluteFilePath();
     QString targets = sig.absoluteFilePath();
-    QString destf = dest_dir.filePath(file.filename());
-    QString desth = dest_dir.filePath(hash.filename());
-    QString dests = dest_dir.filePath(sig.filename());
+    QString destf = dest_dir.filePath(file.fileName());
+    QString desth = dest_dir.filePath(hash.fileName());
+    QString dests = dest_dir.filePath(sig.fileName());
 
     // copy the pack into destination.
     if (!QFile::copy(targetf, destf)) {
@@ -122,7 +124,7 @@ void getPackFromPaths(const QDir& dest_dir,
       throw OTAError{::std::move(xerror)};
     }
 
-    stream << file.filename() << "|" << hash.filename() << "|" << sig.filename()
+    stream << file.fileName() << "|" << hash.fileName() << "|" << sig.fileName()
            << "\n";
   }
   log.close();
@@ -132,12 +134,12 @@ void getPackFromPaths(const QDir& dest_dir,
 // to apply all the packs on app.
 
 // safe mode: Under saft mode, there's hash check for app after every step.
-template <typename VersionType, typename CallbackOnFind,
+template <typename VersionType,
           typename EdgeType = ::std::pair<VersionType, VersionType>>
 void applyPackOnApp(const QDir& app_root, const QDir& pack_root,
-                    const QFileInfo pubkey, bool safe_mode = true) {
+                    const QFileInfo& pubkey, bool safe_mode = true) {
   // Apply sequence is decicded according to apply_log.
-  QString log_path = pack_root.filePath(QStringLiteral("apply_log"));
+  QString log_path = pack_root.filePath(kApplyLogName);
   QFile log_file(log_path);
   if (!log_file.open(QFile::ReadOnly)) {
     OTAError::S_file_open_fail xerror{::std::move(log_path),
@@ -181,7 +183,8 @@ void applyPackOnApp(const QDir& app_root, const QDir& pack_root,
       packfile.prepend("[");
       packfile.append("]");
       packfile.append("current pack verify fails.");
-      OTAError::S_general xerr{packfile + STRING_SOURCE_LOCATION};
+      OTAError::S_verify_fail xerr{::std::move(packfile),
+                                   STRING_SOURCE_LOCATION};
       throw OTAError{::std::move(xerr)};
     }
 
@@ -201,9 +204,29 @@ void applyPackOnApp(const QDir& app_root, const QDir& pack_root,
       continue;
     }
 
+    Property pp = ReadProperty();
+
     // Do hash check.
-    QString hashname = info.at(1);
-    // TODO check.
+    QString hash_filename = pack_root.filePath(info.at(1));
+    QFile hashfile(hash_filename);
+    if (!hashfile.open(QFile::ReadOnly)) {
+      log_file.close();
+      tmp_root.removeRecursively();
+      OTAError::S_file_open_fail xerror{::std::move(log_path),
+                                        STRING_SOURCE_LOCATION};
+      throw OTAError{::std::move(xerror)};
+    }
+    ::std::string base_value = hashfile.readAll().toStdString();
+    hashfile.close();
+    ::std::string app_value =
+        FileLogger::GetHashFromLogFile(kFileLogPath).to_string();
+    if (app_value != base_value) {
+      log_file.close();
+      tmp_root.removeRecursively();
+      OTAError::S_hash_check_fail xerror{::std::move(pp.app_version_),
+                                         STRING_SOURCE_LOCATION};
+      throw OTAError{::std::move(xerror)};
+    }
 
     // remove the previsou content.
     tmp_root.removeRecursively();

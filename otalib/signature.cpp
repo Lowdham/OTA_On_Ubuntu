@@ -43,12 +43,15 @@ void genKey(const QString& prikey_file, const QString& pubkey_file) {
   system(cmd.c_str());
 }
 
-bool sign(const QFileInfo& target, const QFileInfo& prikey) noexcept {
+bool sign(const QFileInfo& target,
+          const QFileInfo& prikey,const QString& version) noexcept {
   // Get the hash value of target, and then generate the signature.
   QFile tfile(target.absoluteFilePath());
   QString hfilepath = target.absoluteDir().filePath(QStringLiteral("hash"));
   QFile hfile(hfilepath);
-  QString dfilepath = target.absoluteDir().filePath(QStringLiteral("sig"));
+  QString dfilepath =
+      target.absoluteDir().filePath(version + QStringLiteral("_sig"));
+
   QFile dfile(dfilepath);
   if (tfile.open(QFile::ReadOnly)) {
     //

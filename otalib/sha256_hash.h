@@ -18,8 +18,7 @@ using merkle_tree_t = merkle::TreeT<kSha256Len, merkle::sha256_openssl>;
 using merkle_hash_t = merkle::Hash;
 using hash_table_t = std::unordered_map<std::string, std::string>;
 
-static void Sha256HashFile(const std::string &filename,
-                           uint8_t md[kSha256Len]) {
+static void Sha256HashFile(const std::string &filename, uint8_t md[kSha256Len]) {
   FILE *fp = nullptr;
   fp = ::fopen(filename.c_str(), "rb");
   if (fp == nullptr) return;
@@ -42,8 +41,8 @@ static void Sha256HashFile(const std::string &filename,
 /// \param htable
 /// \return
 ///
-static bool CalcFileSha256Hash(const QString &dir_name, merkle_tree_t &tree,
-                               hash_table_t &htable, size_t &cnt) {
+static bool CalcFileSha256Hash(const QString &dir_name, merkle_tree_t &tree, hash_table_t &htable,
+                               size_t &cnt) {
   QDir dir(dir_name);
   if (!dir.exists()) return false;
 
@@ -55,7 +54,9 @@ static bool CalcFileSha256Hash(const QString &dir_name, merkle_tree_t &tree,
   for (auto &file : list) {
     if (file.fileName() == "." || file.fileName() == "..") continue;
     QString name = QDir::fromNativeSeparators(dir_name + "/" + file.fileName());
-    if (file.isFile()) {
+    if (file.isDir()) {
+      CalcFileSha256Hash(name, tree, htable, cnt);
+    } else if (file.isFile()) {
       uint8_t md[kSha256Len];
       Sha256HashFile(name.toStdString(), md);
       cnt++;
@@ -63,8 +64,6 @@ static bool CalcFileSha256Hash(const QString &dir_name, merkle_tree_t &tree,
       merkle_hash_t hash(md);
       tree.insert(hash);
       htable.emplace(name.toStdString(), hash.to_string());
-    } else if (file.isDir()) {
-      CalcFileSha256Hash(name, tree, htable, cnt);
     }
   }
   return true;
@@ -76,8 +75,7 @@ static bool CalcFileSha256Hash(const QString &dir_name, merkle_tree_t &tree,
 /// \param proof_hash
 /// \return
 ///
-static bool VerifyMerkleTree(const QString &dir_name,
-                             const merkle_hash_t &proof_hash) {
+static bool VerifyMerkleTree(const QString &dir_name, const merkle_hash_t &proof_hash) {
   size_t files = 0;
   merkle_tree_t tree;
   hash_table_t htable;
@@ -92,8 +90,7 @@ static bool VerifyMerkleTree(const QString &dir_name,
 /// \param gen_log_file
 /// \return
 ///
-static bool GenerateHashLogFile(const QString &dir_name,
-                                const QString &gen_log_file) {
+static bool GenerateHashLogFile(const QString &dir_name, const QString &gen_log_file) {
   FILE *fp = ::fopen(gen_log_file.toStdString().c_str(), "w");
   if (!fp) return false;
 
@@ -111,8 +108,7 @@ static bool GenerateHashLogFile(const QString &dir_name,
   }
   if (tree.root().size()) {
     std::string merkletree_hashv = "**" + tree.root().to_string() + "**";
-    ::fwrite(merkletree_hashv.data(), sizeof(char), merkletree_hashv.size(),
-             fp);
+    ::fwrite(merkletree_hashv.data(), sizeof(char), merkletree_hashv.size(), fp);
   }
   ::fflush(fp);
   ::fclose(fp);
