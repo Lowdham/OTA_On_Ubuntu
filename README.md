@@ -5,7 +5,7 @@
 1. 首先将该项目clone至本地
 
 ```git
-git clone git@gitlab.eduxiji.net:thf5000y2k/project325618-86900.git
+git clone https://github.com/Lowdham/OTA_On_Ubuntu.git
 ```
 
 2. clone后使用qtcreator打开工程文件进行build。
